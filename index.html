@@ -166,6 +166,31 @@
   .marca-row .info span{font-size:12px; color:var(--ink-soft);}
   .marca-row button{background:none; border:none; color:var(--err); font-size:16px; cursor:pointer;}
 
+  /* Login */
+  .login-screen{
+    position:fixed; inset:0; z-index:100; background:var(--steel-900);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .login-card{
+    width:100%; max-width:380px; background:var(--paper); border-radius:14px;
+    padding:28px 24px; box-shadow:0 8px 30px rgba(0,0,0,.4);
+  }
+  .login-card h1{font-size:18px; margin:0 0 4px; text-align:center;}
+  .login-card .sub{font-size:12px; color:var(--ink-soft); text-align:center; margin-bottom:20px;}
+  .login-error{
+    background:var(--err-bg); color:var(--err); font-size:13px; font-weight:600;
+    padding:10px 12px; border-radius:8px; margin-top:12px; display:none;
+  }
+  .login-error.show{display:block;}
+
+  .user-row{display:flex; justify-content:space-between; align-items:center; gap:10px; background:var(--paper); border:1px solid #e4e2dc; border-radius:8px; padding:10px 12px; margin-bottom:8px;}
+  .user-row .info b{display:block; font-size:14px;}
+  .user-row .info span{font-size:12px; color:var(--ink-soft);}
+  .user-row .acciones{display:flex; gap:6px; flex-wrap:wrap;}
+  .user-row .acciones button{font-size:11px; font-weight:700; padding:6px 8px; border-radius:6px; border:1px solid #d4d2ca; background:#fff; cursor:pointer;}
+  .badge-admin{font-size:10px; font-weight:700; padding:3px 8px; border-radius:999px; background:var(--ok-bg); color:var(--ok);}
+  .badge-inactivo{font-size:10px; font-weight:700; padding:3px 8px; border-radius:999px; background:var(--err-bg); color:var(--err);}
+
   .lib-section-title{font-weight:700; font-size:15px; margin:22px 2px 10px; display:flex; align-items:center; gap:8px; color:#fff;}
   .lib-section-title .count{font-size:11px; font-weight:700; background:var(--steel-200); color:var(--ink-soft); padding:3px 9px; border-radius:999px;}
   .lib-table-wrap{overflow-x:auto; border:1px solid #e4e2dc; border-radius:var(--radius); background:var(--paper); margin-bottom:8px;}
@@ -178,6 +203,21 @@
 </style>
 </head>
 <body>
+
+  <!-- ============ LOGIN (bloquea todo hasta iniciar sesión) ============ -->
+  <div class="login-screen" id="screen-login">
+    <div class="login-card">
+      <h1>Registro de Inspección</h1>
+      <div class="sub">Inicia sesión para continuar en este dispositivo</div>
+      <label>Usuario</label>
+      <input type="text" id="login_usuario" autocomplete="username" placeholder="Tu usuario">
+      <label>Contraseña</label>
+      <input type="password" id="login_password" autocomplete="current-password" placeholder="Tu contraseña">
+      <div class="login-error" id="loginError"></div>
+      <button class="btn btn-primary" id="btnLogin" style="margin-top:16px;">Iniciar sesión</button>
+      <div class="hint" style="text-align:center; margin-top:12px;">La sesión queda guardada en este dispositivo — no hace falta iniciarla cada vez que abras la app, solo la primera vez.</div>
+    </div>
+  </div>
 
   <div class="topbar">
     <div class="topbar-left">
@@ -216,7 +256,31 @@
     <div class="home-section-title">Otros</div>
     <button class="btn btn-outline-light" id="btnOpenMarcas">📋 Marcas detenidas</button>
     <button class="btn btn-outline-light" id="btnOpenLiberaciones" style="margin-top:10px;">🔓 Liberaciones pendientes</button>
+
+    <div class="home-section-title">Mi cuenta</div>
+    <div class="card" style="margin-bottom:10px;">
+      <div id="cuentaInfo" class="hint" style="margin-top:0; font-size:13px;"></div>
+    </div>
+    <button class="btn btn-outline-light" id="btnGestionarUsuarios" style="display:none; margin-bottom:10px;">👤 Gestionar usuarios</button>
+    <button class="btn btn-ghost" id="btnCerrarSesion">Cerrar sesión</button>
   </main>
+
+  <!-- ============ SCREEN: gestión de usuarios (solo administradores) ============ -->
+  <div id="screen-usuarios" style="display:none;">
+    <main>
+      <div class="card">
+        <h2>Crear nuevo usuario</h2>
+        <label>Usuario</label>
+        <input type="text" id="nu_usuario" placeholder="Ej: jperez" autocomplete="off">
+        <label>Contraseña</label>
+        <input type="text" id="nu_password" placeholder="Mínimo 6 caracteres">
+        <label class="qcheck"><input type="checkbox" id="nu_admin"> Este usuario también será administrador</label>
+        <button class="btn btn-primary" id="btnCrearUsuario" style="margin-top:16px;">Crear usuario</button>
+      </div>
+      <button class="btn btn-ghost" id="btnRefreshUsuarios" style="margin-bottom:14px;">🔄 Actualizar lista</button>
+      <div id="usuariosList"></div>
+    </main>
+  </div>
 
   <!-- ============ SCREEN: responder / historial ============ -->
   <div id="screen-form" style="display:none;">
@@ -333,6 +397,21 @@
     </div>
   </div>
 
+  <!-- MODAL: reautorizar acción de administrador con la contraseña -->
+  <div class="modal-backdrop" id="adminAuthModal">
+    <div class="modal modal-confirm">
+      <h3>Confirma tu contraseña</h3>
+      <p>Por seguridad, vuelve a escribir tu contraseña de administrador para continuar.</p>
+      <label>Contraseña</label>
+      <input type="password" id="adminAuthPassword">
+      <div class="login-error" id="adminAuthError"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnAdminAuthCancel">Cancelar</button>
+        <button class="btn btn-primary" id="btnAdminAuthOk">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- BUILDER MODAL -->
   <div class="modal-backdrop" id="builderModal">
     <div class="modal">
@@ -409,6 +488,8 @@ let FORMS = [];
 let MARCAS = []; // [{id, proyecto, marca, motivo}]
 let ACTIVE_FORM_ID = null;
 let MULTIPLICADOR = 1; // cuántas veces se repite el formulario en esta sesión
+let SESION = null; // {usuario, esAdmin} — persiste en este dispositivo
+let SESION_PASSWORD_TEMP = null; // solo en memoria, para autorizar acciones de admin sin volver a pedirla en cada botón (se pierde al recargar la página)
 function activeForm(){ return FORMS.find(f=>f.id===ACTIVE_FORM_ID) || null; }
 
 /* =========================================================
@@ -458,27 +539,42 @@ async function persistForms(){ await idbPut("config", {key:"forms", value: JSON.
 async function getConfigUpdatedAtLocal(){
   const rows = await idbGetAll("config");
   const row = rows.find(r=>r.key==="configUpdatedAt");
-  return row ? row.value : "";
+  return row ? Number(row.value) || 0 : 0; // si venía en formato viejo (texto), se trata como "0" y se vuelve a bajar de una
 }
 async function setConfigUpdatedAtLocal(valor){
-  await idbPut("config", {key:"configUpdatedAt", value:valor});
+  await idbPut("config", {key:"configUpdatedAt", value:Number(valor) || 0});
 }
 function urlConfigCompartida(){
-  // Se usa el Apps Script del primer formulario como referencia: en la
-  // práctica todos tus formularios apuntan al mismo script/planilla.
-  return (FORMS[0] && FORMS[0].webAppUrl) || "";
+  // Se usa la URL del primer formulario QUE TENGA una URL configurada
+  // (en la práctica, todos tus formularios deberían apuntar al mismo
+  // Apps Script/planilla).
+  const conUrl = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
+  return conUrl ? conUrl.webAppUrl.trim() : "";
 }
+function urlParaLogin(){
+  return urlConfigCompartida() || DEFAULT_WEB_APP_URL;
+}
+// Devuelve true/false según si realmente logró subir la configuración.
+// Antes esto asumía éxito aunque el servidor fallara — ahora se confirma.
 async function subirConfigAServidor(){
   const url = urlConfigCompartida();
-  if(!url || !navigator.onLine) return;
+  if(!url) return { ok:false, motivo:"Ningún formulario tiene URL de Apps Script configurada" };
+  if(!navigator.onLine) return { ok:false, motivo:"Sin conexión" };
   try{
-    const ahora = new Date().toISOString();
-    await fetch(url, {
+    const res = await fetch(url, {
       method:"POST",
       body: new URLSearchParams({ _action:"guardar_config", formsConfig: JSON.stringify(FORMS) })
     });
-    await setConfigUpdatedAtLocal(ahora);
-  }catch(err){ /* si falla, no pasa nada: se reintentará en la próxima sincronización */ }
+    const text = await res.text();
+    let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
+    if(parsed && parsed.status === "ok"){
+      await setConfigUpdatedAtLocal(parsed.updatedAt);
+      return { ok:true };
+    }
+    return { ok:false, motivo:(parsed && parsed.message) || "El servidor no confirmó el guardado (¿actualizaste también el Codigo.gs?)" };
+  }catch(err){
+    return { ok:false, motivo:"No se pudo contactar el servidor" };
+  }
 }
 async function bajarConfigDelServidorSiHayVersionNueva(){
   const url = urlConfigCompartida();
@@ -490,12 +586,13 @@ async function bajarConfigDelServidorSiHayVersionNueva(){
     let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
     if(!parsed || parsed.status !== "ok" || !parsed.formsConfig) return;
     const localUpdatedAt = await getConfigUpdatedAtLocal();
-    if(parsed.updatedAt && (!localUpdatedAt || parsed.updatedAt > localUpdatedAt)){
+    const remoteUpdatedAt = Number(parsed.updatedAt) || 0;
+    if(remoteUpdatedAt > localUpdatedAt){
       const nuevasForms = JSON.parse(parsed.formsConfig);
       if(Array.isArray(nuevasForms) && nuevasForms.length > 0){
         FORMS = nuevasForms;
         await idbPut("config", {key:"forms", value: JSON.stringify(FORMS)});
-        await setConfigUpdatedAtLocal(parsed.updatedAt);
+        await setConfigUpdatedAtLocal(remoteUpdatedAt);
         // si se está viendo un formulario o el home ahora mismo, refrescar
         if(ACTIVE_FORM_ID && activeForm()){ renderForm(); resetForm(); }
         else if(document.getElementById("screen-home").style.display !== "none"){ renderHome(); }
@@ -503,6 +600,213 @@ async function bajarConfigDelServidorSiHayVersionNueva(){
     }
   }catch(err){ /* sin conexión o URL inválida: se reintenta después */ }
 }
+
+/* =========================================================
+   SESIÓN (inicio de sesión por dispositivo)
+   ========================================================= */
+async function cargarSesionLocal(){
+  const rows = await idbGetAll("config");
+  const row = rows.find(r=>r.key==="sesion");
+  return row ? row.value : null;
+}
+async function guardarSesionLocal(sesion){
+  await idbPut("config", {key:"sesion", value:sesion});
+}
+async function borrarSesionLocal(){
+  await idbDelete("config", "sesion");
+}
+function mostrarPantallaLogin(){ document.getElementById("screen-login").style.display = "flex"; }
+function ocultarPantallaLogin(){ document.getElementById("screen-login").style.display = "none"; }
+function mostrarErrorLogin(msg){
+  const el = document.getElementById("loginError");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+function limpiarErrorLogin(){ document.getElementById("loginError").classList.remove("show"); }
+
+document.getElementById("btnLogin").addEventListener("click", async ()=>{
+  const usuario = document.getElementById("login_usuario").value.trim();
+  const password = document.getElementById("login_password").value;
+  limpiarErrorLogin();
+  if(!usuario || !password){ mostrarErrorLogin("Escribe tu usuario y contraseña"); return; }
+  if(!navigator.onLine){ mostrarErrorLogin("Necesitas conexión a internet para iniciar sesión la primera vez en este dispositivo"); return; }
+  const btn = document.getElementById("btnLogin");
+  btn.disabled = true; btn.textContent = "Verificando…";
+  try{
+    const res = await fetch(urlParaLogin(), {
+      method:"POST",
+      body: new URLSearchParams({ _action:"login", usuario:usuario, password:password })
+    });
+    const text = await res.text();
+    let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
+    if(parsed && parsed.status === "ok"){
+      SESION = { usuario: parsed.usuario, esAdmin: !!parsed.esAdmin };
+      SESION_PASSWORD_TEMP = password;
+      await guardarSesionLocal(SESION);
+      ocultarPantallaLogin();
+      await continuarCargaDespuesDeLogin();
+    } else {
+      mostrarErrorLogin((parsed && parsed.message) || "No se pudo verificar. Revisa la URL configurada o tu conexión.");
+    }
+  }catch(err){
+    mostrarErrorLogin("No se pudo contactar el servidor. Revisa tu conexión.");
+  } finally {
+    btn.disabled = false; btn.textContent = "Iniciar sesión";
+  }
+});
+
+document.getElementById("btnCerrarSesion").addEventListener("click", async ()=>{
+  const ok = await showConfirm("Vas a cerrar sesión en este dispositivo. La próxima vez que alguien abra la app, tendrá que iniciar sesión de nuevo.", "¿Cerrar sesión?");
+  if(!ok) return;
+  await borrarSesionLocal();
+  SESION = null;
+  SESION_PASSWORD_TEMP = null;
+  document.getElementById("login_usuario").value = "";
+  document.getElementById("login_password").value = "";
+  limpiarErrorLogin();
+  mostrarPantallaLogin();
+});
+
+function renderCuentaInfo(){
+  const el = document.getElementById("cuentaInfo");
+  if(!SESION) return;
+  el.innerHTML = `Sesión iniciada como <b>${escapeHtml(SESION.usuario)}</b>${SESION.esAdmin ? ' <span class="badge-admin">Administrador</span>' : ''}`;
+  document.getElementById("btnGestionarUsuarios").style.display = SESION.esAdmin ? "" : "none";
+}
+
+// Pide (o reutiliza) la contraseña del administrador en sesión para
+// autorizar una acción sensible, y ejecuta "accion(usuario, password)"
+// una vez confirmada.
+async function conAutorizacionAdmin(accion){
+  if(SESION_PASSWORD_TEMP){
+    await accion(SESION.usuario, SESION_PASSWORD_TEMP);
+    return;
+  }
+  document.getElementById("adminAuthPassword").value = "";
+  document.getElementById("adminAuthError").classList.remove("show");
+  document.getElementById("adminAuthModal").classList.add("show");
+  await new Promise(resolve=>{
+    const ok = document.getElementById("btnAdminAuthOk");
+    const cancel = document.getElementById("btnAdminAuthCancel");
+    const limpiar = ()=>{ ok.onclick = null; cancel.onclick = null; };
+    ok.onclick = async ()=>{
+      const password = document.getElementById("adminAuthPassword").value;
+      if(!password){
+        document.getElementById("adminAuthError").textContent = "Escribe tu contraseña";
+        document.getElementById("adminAuthError").classList.add("show");
+        return;
+      }
+      SESION_PASSWORD_TEMP = password;
+      document.getElementById("adminAuthModal").classList.remove("show");
+      limpiar();
+      await accion(SESION.usuario, password);
+      resolve();
+    };
+    cancel.onclick = ()=>{ document.getElementById("adminAuthModal").classList.remove("show"); limpiar(); resolve(); };
+  });
+}
+
+document.getElementById("btnGestionarUsuarios").addEventListener("click", openUsuariosScreen);
+async function openUsuariosScreen(){
+  hideAllScreens();
+  document.getElementById("screen-usuarios").style.display = "";
+  document.getElementById("btnBackHome").style.display = "";
+  document.getElementById("topTitle").textContent = "Usuarios";
+  document.getElementById("topSub").textContent = "Administración de accesos";
+  updateStatusPill();
+  await refreshUsuarios();
+}
+document.getElementById("btnRefreshUsuarios").addEventListener("click", refreshUsuarios);
+
+async function refreshUsuarios(){
+  const list = document.getElementById("usuariosList");
+  if(!navigator.onLine){ list.innerHTML = `<div class="empty">Necesitas conexión a internet para ver la lista de usuarios.</div>`; return; }
+  list.innerHTML = `<div class="empty">Cargando…</div>`;
+  await conAutorizacionAdmin(async (usuario, password)=>{
+    try{
+      const url = urlParaLogin();
+      const sep = url.includes("?") ? "&" : "?";
+      const res = await fetch(url + sep + `action=listar_usuarios&adminUsuario=${encodeURIComponent(usuario)}&adminPassword=${encodeURIComponent(password)}`);
+      const text = await res.text();
+      let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
+      if(!parsed || parsed.status !== "ok"){
+        SESION_PASSWORD_TEMP = null;
+        list.innerHTML = `<div class="empty">${escapeHtml((parsed && parsed.message) || "No se pudo cargar la lista de usuarios")}</div>`;
+        return;
+      }
+      renderUsuarios(parsed.usuarios || []);
+    }catch(err){
+      list.innerHTML = `<div class="empty">No se pudo conectar. Revisa tu conexión.</div>`;
+    }
+  });
+}
+function renderUsuarios(usuarios){
+  const list = document.getElementById("usuariosList");
+  if(usuarios.length === 0){ list.innerHTML = `<div class="empty">No hay usuarios cargados.</div>`; return; }
+  list.innerHTML = "";
+  usuarios.forEach(u=>{
+    const row = document.createElement("div");
+    row.className = "user-row";
+    const esYo = u.usuario === SESION.usuario;
+    row.innerHTML = `
+      <div class="info">
+        <b>${escapeHtml(u.usuario)} ${u.esAdmin ? '<span class="badge-admin">Admin</span>' : ''} ${!u.activo ? '<span class="badge-inactivo">Deshabilitado</span>' : ''}</b>
+        <span>${esYo ? "Tú" : ""}</span>
+      </div>
+      <div class="acciones">
+        <button data-act="toggle-admin" data-usuario="${escapeHtml(u.usuario)}" data-valor="${!u.esAdmin}">${u.esAdmin ? "Quitar admin" : "Hacer admin"}</button>
+        ${u.usuario.toLowerCase() !== "ngajardo" ? `<button data-act="toggle-activo" data-usuario="${escapeHtml(u.usuario)}" data-valor="${!u.activo}">${u.activo ? "Deshabilitar" : "Habilitar"}</button>` : ""}
+      </div>
+    `;
+    list.appendChild(row);
+  });
+}
+document.getElementById("usuariosList").addEventListener("click", async (e)=>{
+  const btn = e.target.closest("button[data-act]");
+  if(!btn) return;
+  const usuario = btn.dataset.usuario;
+  const valor = btn.dataset.valor === "true";
+  const accion = btn.dataset.act === "toggle-admin" ? "cambiar_rol_admin" : "cambiar_estado_usuario";
+  const campoValor = btn.dataset.act === "toggle-admin" ? "esAdmin" : "activo";
+  await conAutorizacionAdmin(async (adminUsuario, adminPassword)=>{
+    try{
+      const cuerpo = { _action:accion, usuario:usuario, _adminUsuario:adminUsuario, _adminPassword:adminPassword };
+      cuerpo[campoValor] = String(valor);
+      const res = await fetch(urlParaLogin(), { method:"POST", body: new URLSearchParams(cuerpo) });
+      const text = await res.text();
+      let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
+      if(parsed && parsed.status === "ok"){ showToast("Actualizado ✓"); refreshUsuarios(); }
+      else { SESION_PASSWORD_TEMP = null; showToast("Error: "+((parsed && parsed.message) || "respuesta inválida")); }
+    }catch(err){ showToast("No se pudo actualizar. Revisa tu conexión."); }
+  });
+});
+document.getElementById("btnCrearUsuario").addEventListener("click", async ()=>{
+  const nuevoUsuario = document.getElementById("nu_usuario").value.trim();
+  const nuevaPassword = document.getElementById("nu_password").value;
+  const esAdmin = document.getElementById("nu_admin").checked;
+  if(!nuevoUsuario || !nuevaPassword){ showToast("Usuario y contraseña son obligatorios"); return; }
+  if(nuevaPassword.length < 6){ showToast("La contraseña debe tener al menos 6 caracteres"); return; }
+  await conAutorizacionAdmin(async (adminUsuario, adminPassword)=>{
+    try{
+      const res = await fetch(urlParaLogin(), {
+        method:"POST",
+        body: new URLSearchParams({ _action:"crear_usuario", nuevoUsuario:nuevoUsuario, nuevaPassword:nuevaPassword, nuevoEsAdmin:String(esAdmin), _adminUsuario:adminUsuario, _adminPassword:adminPassword })
+      });
+      const text = await res.text();
+      let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
+      if(parsed && parsed.status === "ok"){
+        showToast("Usuario creado ✓");
+        document.getElementById("nu_usuario").value = "";
+        document.getElementById("nu_password").value = "";
+        document.getElementById("nu_admin").checked = false;
+        refreshUsuarios();
+      } else {
+        SESION_PASSWORD_TEMP = null;
+        showToast("Error: "+((parsed && parsed.message) || "respuesta inválida"));
+      }
+    }catch(err){ showToast("No se pudo crear. Revisa tu conexión."); }
+  });
+});
 
 /* =========================================================
    CONFIRM MODAL (reemplaza confirm()/alert() nativos, que
@@ -618,6 +922,7 @@ function hideAllScreens(){
   document.getElementById("screen-form").style.display = "none";
   document.getElementById("screen-marcas").style.display = "none";
   document.getElementById("screen-liberaciones").style.display = "none";
+  document.getElementById("screen-usuarios").style.display = "none";
   document.getElementById("btnConfig").style.display = "none";
 }
 function openFormScreen(formId){
@@ -723,7 +1028,7 @@ async function getLiberacionesUrl(){
   const rows = await idbGetAll("config");
   const row = rows.find(r=>r.key==="liberacionesUrl");
   if(row && row.value) return row.value;
-  return (FORMS[0] && FORMS[0].webAppUrl) || "";
+  return urlConfigCompartida(); // cualquier formulario que tenga URL configurada
 }
 async function setLiberacionesUrl(url){ await idbPut("config", {key:"liberacionesUrl", value:url}); }
 
@@ -867,6 +1172,7 @@ function goHome(){
   document.getElementById("topTitle").textContent = "Mis formularios";
   document.getElementById("topSub").textContent = "QA/QC · Maestranza";
   renderHome();
+  renderCuentaInfo();
   refreshTicker();
   updateStatusPill();
 }
@@ -1112,8 +1418,14 @@ function renderForm(){
   });
 
   // condicionales: re-evaluar visibilidad ante cualquier cambio en el formulario
-  wrap.addEventListener("input", evaluateConditions);
-  wrap.addEventListener("change", evaluateConditions);
+  // (el listener se agrega UNA sola vez sobre "wrap"; renderForm() se puede
+  // llamar muchas veces en la misma sesión —por ejemplo al usar el botón de
+  // multiplicador— y sin este resguardo se irían acumulando listeners repetidos)
+  if(!wrap.dataset.listenersCondiciones){
+    wrap.addEventListener("input", evaluateConditions);
+    wrap.addEventListener("change", evaluateConditions);
+    wrap.dataset.listenersCondiciones = "1";
+  }
   evaluateConditions();
 }
 
@@ -1310,7 +1622,7 @@ async function guardarRevision(){
     const record = { id: uuid(), formId: f.id, createdAt: new Date().toISOString(), synced:false, lastError:null, data, heldMarkWarning: held };
     await idbPut("registros", record);
   }
-  if(questionsChanged) await persistForms();
+  if(questionsChanged){ await persistForms(); subirConfigAServidor(); }
 
   showToast(registros.length === 1 ? "Revisión guardada en el celular ✓" : `${registros.length} revisiones guardadas en el celular ✓`);
   MULTIPLICADOR = 1;
@@ -1828,14 +2140,18 @@ document.getElementById("btnSaveBuilder").addEventListener("click", async ()=>{
   f.sheetName = document.getElementById("bf_sheet").value.trim();
   f.questions = builderDraft;
   await persistForms();
-  subirConfigAServidor();
+  const resultadoSubida = await subirConfigAServidor();
 
   if(ACTIVE_FORM_ID === builderFormId){
     renderForm(); resetForm(); updateStatusPill();
     document.getElementById("topTitle").textContent = f.name;
   }
   renderHome();
-  showToast("Formulario guardado" + (navigator.onLine ? " y compartido con otros dispositivos" : " (se compartirá cuando haya conexión)"));
+  if(resultadoSubida.ok){
+    showToast("Formulario guardado y compartido con otros dispositivos ✓");
+  } else {
+    showToast("Formulario guardado en este celular, pero NO se compartió con otros: " + resultadoSubida.motivo);
+  }
   closeBuilder();
 });
 
@@ -1857,7 +2173,19 @@ function chequeoRefrescoDiarioHistorial(){
    ========================================================= */
 (async function init(){
   await openDB();
-  await loadConfig();
+  await loadConfig(); // trae FORMS ya guardados localmente (si los hay), necesarios para saber a qué URL validar el login
+  SESION = await cargarSesionLocal();
+  if(!SESION){
+    mostrarPantallaLogin();
+    return; // todo lo demás espera a que se inicie sesión (ver btnLogin)
+  }
+  ocultarPantallaLogin();
+  await continuarCargaDespuesDeLogin();
+})();
+
+// Todo lo que antes corría directo en init() ahora vive acá, para poder
+// esperar a que haya una sesión iniciada antes de mostrar nada de la app.
+async function continuarCargaDespuesDeLogin(){
   goHome();
   updateStatusPill();
   trySync();
@@ -1868,7 +2196,7 @@ function chequeoRefrescoDiarioHistorial(){
     chequeoRefrescoDiarioHistorial();
     bajarConfigDelServidorSiHayVersionNueva();
   }, 30000);
-})();
+}
 
 // Registro del service worker: deja la app instalada/cacheada para que
 // abra sin internet. Solo funciona si la app se sirve por HTTPS (como

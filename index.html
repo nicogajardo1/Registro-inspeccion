@@ -257,6 +257,18 @@
     <button class="btn btn-outline-light" id="btnOpenMarcas">📋 Marcas detenidas</button>
     <button class="btn btn-outline-light" id="btnOpenLiberaciones" style="margin-top:10px;">🔓 Liberaciones pendientes</button>
 
+    <div class="home-section-title">Configuración de formularios</div>
+    <div class="card" style="margin-bottom:10px;">
+      <div class="hint" style="margin-top:0;">
+        Las preguntas, alternativas y condiciones se comparten solas entre
+        dispositivos cada ~30 segundos. Si acabas de hacer cambios y
+        quieres confirmarlos ya mismo (o si en otro celular no te aparece
+        lo nuevo), usa estos botones.
+      </div>
+    </div>
+    <button class="btn btn-outline-light" id="btnCompartirConfigAhora">📤 Compartir mis formularios ahora</button>
+    <button class="btn btn-outline-light" id="btnBuscarActualizacion" style="margin-top:10px;">🔄 Buscar actualización de formularios</button>
+
     <div class="home-section-title">Mi cuenta</div>
     <div class="card" style="margin-bottom:10px;">
       <div id="cuentaInfo" class="hint" style="margin-top:0; font-size:13px;"></div>
@@ -578,13 +590,19 @@ async function subirConfigAServidor(){
 }
 async function bajarConfigDelServidorSiHayVersionNueva(){
   const url = urlConfigCompartida();
-  if(!url || !navigator.onLine) return;
+  if(!url) return { ok:false, motivo:"Ningún formulario tiene URL de Apps Script configurada" };
+  if(!navigator.onLine) return { ok:false, motivo:"Sin conexión" };
   try{
     const sep = url.includes("?") ? "&" : "?";
     const res = await fetch(url + sep + "action=config");
     const text = await res.text();
     let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
-    if(!parsed || parsed.status !== "ok" || !parsed.formsConfig) return;
+    if(!parsed || parsed.status !== "ok"){
+      return { ok:false, motivo:(parsed && parsed.message) || "El servidor no respondió correctamente (¿actualizaste el Codigo.gs?)" };
+    }
+    if(!parsed.formsConfig){
+      return { ok:false, motivo:"Todavía no hay ninguna configuración compartida guardada en el servidor. Ve a Editar formulario y guarda una vez para publicarla." };
+    }
     const localUpdatedAt = await getConfigUpdatedAtLocal();
     const remoteUpdatedAt = Number(parsed.updatedAt) || 0;
     if(remoteUpdatedAt > localUpdatedAt){
@@ -596,9 +614,13 @@ async function bajarConfigDelServidorSiHayVersionNueva(){
         // si se está viendo un formulario o el home ahora mismo, refrescar
         if(ACTIVE_FORM_ID && activeForm()){ renderForm(); resetForm(); }
         else if(document.getElementById("screen-home").style.display !== "none"){ renderHome(); }
+        return { ok:true, actualizado:true };
       }
     }
-  }catch(err){ /* sin conexión o URL inválida: se reintenta después */ }
+    return { ok:true, actualizado:false }; // ya tenías la versión más reciente
+  }catch(err){
+    return { ok:false, motivo:"No se pudo contactar el servidor" };
+  }
 }
 
 /* =========================================================
@@ -706,6 +728,20 @@ async function conAutorizacionAdmin(accion){
   });
 }
 
+document.getElementById("btnCompartirConfigAhora").addEventListener("click", async ()=>{
+  if(FORMS.length === 0){ showToast("No tienes ningún formulario configurado todavía"); return; }
+  showToast("Compartiendo…");
+  const resultado = await subirConfigAServidor();
+  if(resultado.ok) showToast("✅ Tu configuración actual quedó guardada en el servidor. Los demás dispositivos la van a recibir en menos de 30 segundos (o al tocar '🔄 Buscar actualización').");
+  else showToast("❌ No se pudo compartir: " + resultado.motivo);
+});
+document.getElementById("btnBuscarActualizacion").addEventListener("click", async ()=>{
+  showToast("Buscando actualización…");
+  const resultado = await bajarConfigDelServidorSiHayVersionNueva();
+  if(resultado.ok && resultado.actualizado) showToast("✅ Se actualizó con la versión más reciente compartida por otro dispositivo.");
+  else if(resultado.ok) showToast("Ya tienes la versión más reciente — no había cambios nuevos.");
+  else showToast("❌ No se pudo buscar actualización: " + resultado.motivo);
+});
 document.getElementById("btnGestionarUsuarios").addEventListener("click", openUsuariosScreen);
 async function openUsuariosScreen(){
   hideAllScreens();
@@ -1090,10 +1126,29 @@ function renderLiberaciones(parsed){
     const diag = document.createElement("div");
     diag.className = "empty";
     diag.style.cssText = "text-align:left; padding:14px; background:#2c3339; color:#fff; border-radius:10px; margin-bottom:16px; font-size:12px; line-height:1.6;";
-    diag.innerHTML = `⚠️ No encontré filas pendientes en "02_NO TOCAR #". Estos son los valores que SÍ encontré en cada columna (compáralos con "Rechazado" / "Avance Aprobado" y "No" — cualquier diferencia de tilde, mayúscula o espacio hace que no calce):<br><br>
-      <b>Columna L (Resultado):</b> ${(parsed.diagnostico.valoresEncontradosColumnaL||[]).map(v=>escapeHtml(v)).join(", ") || "(sin datos)"}<br>
-      <b>Columna M (Reparado):</b> ${(parsed.diagnostico.valoresEncontradosColumnaM||[]).map(v=>escapeHtml(v)).join(", ") || "(sin datos)"}`;
+    const d = parsed.diagnostico;
+    if(d.filasConDatos === 0){
+      diag.innerHTML = `⚠️ La hoja "02_NO TOCAR #" no tiene ninguna fila con datos todavía (está vacía debajo del encabezado).`;
+    } else {
+      diag.innerHTML = `⚠️ Revisé ${d.filasConDatos} fila(s) en "02_NO TOCAR #" y ninguna calzó como pendiente. Estos son los valores que SÍ encontré en cada columna (compáralos con "Rechazado" / "Avance Aprobado" y "No" — cualquier diferencia de tilde, mayúscula o espacio hace que no calce):<br><br>
+        <b>Columna L (Resultado):</b> ${(d.valoresEncontradosColumnaL||[]).map(v=>escapeHtml(v)).join(", ") || "(sin datos)"}<br>
+        <b>Columna M (Reparado):</b> ${(d.valoresEncontradosColumnaM||[]).map(v=>escapeHtml(v)).join(", ") || "(sin datos)"}`;
+    }
     list.appendChild(diag);
+  }
+  if(parsed.diagnosticoT0){
+    const diagT0 = document.createElement("div");
+    diagT0.className = "empty";
+    diagT0.style.cssText = "text-align:left; padding:14px; background:#2c3339; color:#fff; border-radius:10px; margin-bottom:16px; font-size:12px; line-height:1.6;";
+    const dt = parsed.diagnosticoT0;
+    if(dt.filasConDatos === 0){
+      diagT0.innerHTML = `⚠️ La hoja "03_Vigas T0" no tiene ninguna fila con datos todavía (está vacía debajo del encabezado).`;
+    } else {
+      diagT0.innerHTML = `⚠️ Revisé ${dt.filasConDatos} fila(s) en "03_Vigas T0" y ninguna calzó como pendiente. Valores encontrados (compáralos con "Rechazada" y "No"):<br><br>
+        <b>Columna P:</b> ${(dt.valoresEncontradosColumnaP||[]).map(v=>escapeHtml(v)).join(", ") || "(sin datos)"}<br>
+        <b>Columna Q:</b> ${(dt.valoresEncontradosColumnaQ||[]).map(v=>escapeHtml(v)).join(", ") || "(sin datos)"}`;
+    }
+    list.appendChild(diagT0);
   }
 
   const secciones = [
@@ -1871,7 +1926,7 @@ function showToast(msg){
   const t = document.getElementById("toast");
   t.textContent = msg; t.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=> t.classList.remove("show"), 3200);
+  toastTimer = setTimeout(()=> t.classList.remove("show"), 4500);
 }
 document.getElementById("btnGuardar").addEventListener("click", guardarRevision);
 document.getElementById("btnMultiplicar").addEventListener("click", ()=>{

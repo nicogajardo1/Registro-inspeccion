@@ -76,7 +76,7 @@
   .btn-primary:active{background:var(--hazard-dark);}
   .btn-secondary{background:var(--steel-800); color:#fff;}
   .btn-ghost{background:none; border:1.5px solid #d4d2ca; color:var(--ink);}
-  .btn-outline-light{background:var(--steel-700); border:1.5px solid var(--hazard); color:#fff;}
+  .btn-outline-light{background:#333c44; border:2px solid var(--hazard); color:#fff; font-weight:700;}
   .btn-danger{background:none; border:1.5px solid var(--err); color:var(--err);}
   .btn-warn{background:var(--err); color:#fff;}
   .btn-row{display:flex; gap:10px; margin-top:16px;}
@@ -119,6 +119,18 @@
   .home-hero h2{font-size:18px; margin:0 0 4px;}
   .home-hero p{font-size:13px; color:#9aa1a6; margin:0;}
   .home-section-title{color:#9aa1a6; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; margin:22px 2px 10px;}
+
+  .cuenta-card{
+    background:var(--paper); border:2px solid var(--hazard); border-radius:12px;
+    padding:16px; margin-bottom:8px; color:var(--ink);
+  }
+  .cuenta-card .cuenta-usuario{font-size:17px; font-weight:800; color:var(--ink);}
+  .cuenta-card .cuenta-rol{font-size:12px; font-weight:700; margin-top:2px;}
+  .cuenta-card .cuenta-rol.admin{color:var(--ok);}
+  .cuenta-card .cuenta-rol.normal{color:var(--ink-soft);}
+  .cuenta-card-btns{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
+  .cuenta-card-btns .btn{width:auto; flex:1; min-width:140px;}
+  .btn-ghost-light{background:#fff; border:1.5px solid #d4d2ca; color:var(--ink);}
 
   .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--steel-900); color:#fff; padding:12px 20px; border-radius:999px; font-size:13px; font-weight:600; box-shadow:0 4px 14px rgba(0,0,0,.3); opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease; z-index:50; max-width:90%; text-align:center;}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(-4px);}
@@ -249,6 +261,14 @@
       <p>Responde un formulario o revisa las marcas detenidas.</p>
     </div>
 
+    <div class="cuenta-card" id="cuentaCard">
+      <div id="cuentaInfo"></div>
+      <div class="cuenta-card-btns">
+        <button class="btn btn-primary" id="btnGestionarUsuarios" style="display:none;">👤 Gestionar usuarios</button>
+        <button class="btn btn-ghost-light" id="btnCerrarSesion">Cerrar sesión</button>
+      </div>
+    </div>
+
     <div class="home-section-title">Formularios</div>
     <div id="formList"></div>
     <button class="btn btn-secondary" id="btnNewForm">+ Crear nuevo formulario</button>
@@ -268,13 +288,6 @@
     </div>
     <button class="btn btn-outline-light" id="btnCompartirConfigAhora">📤 Compartir mis formularios ahora</button>
     <button class="btn btn-outline-light" id="btnBuscarActualizacion" style="margin-top:10px;">🔄 Buscar actualización de formularios</button>
-
-    <div class="home-section-title">Mi cuenta</div>
-    <div class="card" style="margin-bottom:10px;">
-      <div id="cuentaInfo" class="hint" style="margin-top:0; font-size:13px;"></div>
-    </div>
-    <button class="btn btn-outline-light" id="btnGestionarUsuarios" style="display:none; margin-bottom:10px;">👤 Gestionar usuarios</button>
-    <button class="btn btn-ghost" id="btnCerrarSesion">Cerrar sesión</button>
   </main>
 
   <!-- ============ SCREEN: gestión de usuarios (solo administradores) ============ -->
@@ -289,7 +302,7 @@
         <label class="qcheck"><input type="checkbox" id="nu_admin"> Este usuario también será administrador</label>
         <button class="btn btn-primary" id="btnCrearUsuario" style="margin-top:16px;">Crear usuario</button>
       </div>
-      <button class="btn btn-ghost" id="btnRefreshUsuarios" style="margin-bottom:14px;">🔄 Actualizar lista</button>
+      <button class="btn btn-outline-light" id="btnRefreshUsuarios" style="margin-bottom:14px;">🔄 Actualizar lista</button>
       <div id="usuariosList"></div>
     </main>
   </div>
@@ -556,20 +569,20 @@ async function getConfigUpdatedAtLocal(){
 async function setConfigUpdatedAtLocal(valor){
   await idbPut("config", {key:"configUpdatedAt", value:Number(valor) || 0});
 }
-function urlConfigCompartida(){
-  // Se usa la URL del primer formulario QUE TENGA una URL configurada
-  // (en la práctica, todos tus formularios deberían apuntar al mismo
-  // Apps Script/planilla).
+// Única fuente de verdad para "a qué Apps Script le hablamos": se usa
+// para el login, para compartir/bajar la configuración de formularios, y
+// para Liberaciones pendientes. Antes existían dos funciones parecidas
+// (una con respaldo a DEFAULT_WEB_APP_URL y otra sin él) y podían quedar
+// apuntando a URLs distintas entre pantallas — eso rompía la
+// sincronización entre dispositivos. Ahora es una sola.
+function urlServidorPrincipal(){
   const conUrl = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
-  return conUrl ? conUrl.webAppUrl.trim() : "";
-}
-function urlParaLogin(){
-  return urlConfigCompartida() || DEFAULT_WEB_APP_URL;
+  return (conUrl ? conUrl.webAppUrl.trim() : "") || DEFAULT_WEB_APP_URL;
 }
 // Devuelve true/false según si realmente logró subir la configuración.
 // Antes esto asumía éxito aunque el servidor fallara — ahora se confirma.
 async function subirConfigAServidor(){
-  const url = urlConfigCompartida();
+  const url = urlServidorPrincipal();
   if(!url) return { ok:false, motivo:"Ningún formulario tiene URL de Apps Script configurada" };
   if(!navigator.onLine) return { ok:false, motivo:"Sin conexión" };
   try{
@@ -589,7 +602,7 @@ async function subirConfigAServidor(){
   }
 }
 async function bajarConfigDelServidorSiHayVersionNueva(){
-  const url = urlConfigCompartida();
+  const url = urlServidorPrincipal();
   if(!url) return { ok:false, motivo:"Ningún formulario tiene URL de Apps Script configurada" };
   if(!navigator.onLine) return { ok:false, motivo:"Sin conexión" };
   try{
@@ -655,7 +668,7 @@ document.getElementById("btnLogin").addEventListener("click", async ()=>{
   const btn = document.getElementById("btnLogin");
   btn.disabled = true; btn.textContent = "Verificando…";
   try{
-    const res = await fetch(urlParaLogin(), {
+    const res = await fetch(urlServidorPrincipal(), {
       method:"POST",
       body: new URLSearchParams({ _action:"login", usuario:usuario, password:password })
     });
@@ -692,7 +705,10 @@ document.getElementById("btnCerrarSesion").addEventListener("click", async ()=>{
 function renderCuentaInfo(){
   const el = document.getElementById("cuentaInfo");
   if(!SESION) return;
-  el.innerHTML = `Sesión iniciada como <b>${escapeHtml(SESION.usuario)}</b>${SESION.esAdmin ? ' <span class="badge-admin">Administrador</span>' : ''}`;
+  el.innerHTML = `
+    <div class="cuenta-usuario">👋 ${escapeHtml(SESION.usuario)}</div>
+    <div class="cuenta-rol ${SESION.esAdmin ? 'admin' : 'normal'}">${SESION.esAdmin ? '★ Administrador' : 'Usuario'}</div>
+  `;
   document.getElementById("btnGestionarUsuarios").style.display = SESION.esAdmin ? "" : "none";
 }
 
@@ -760,7 +776,7 @@ async function refreshUsuarios(){
   list.innerHTML = `<div class="empty">Cargando…</div>`;
   await conAutorizacionAdmin(async (usuario, password)=>{
     try{
-      const url = urlParaLogin();
+      const url = urlServidorPrincipal();
       const sep = url.includes("?") ? "&" : "?";
       const res = await fetch(url + sep + `action=listar_usuarios&adminUsuario=${encodeURIComponent(usuario)}&adminPassword=${encodeURIComponent(password)}`);
       const text = await res.text();
@@ -808,7 +824,7 @@ document.getElementById("usuariosList").addEventListener("click", async (e)=>{
     try{
       const cuerpo = { _action:accion, usuario:usuario, _adminUsuario:adminUsuario, _adminPassword:adminPassword };
       cuerpo[campoValor] = String(valor);
-      const res = await fetch(urlParaLogin(), { method:"POST", body: new URLSearchParams(cuerpo) });
+      const res = await fetch(urlServidorPrincipal(), { method:"POST", body: new URLSearchParams(cuerpo) });
       const text = await res.text();
       let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
       if(parsed && parsed.status === "ok"){ showToast("Actualizado ✓"); refreshUsuarios(); }
@@ -824,7 +840,7 @@ document.getElementById("btnCrearUsuario").addEventListener("click", async ()=>{
   if(nuevaPassword.length < 6){ showToast("La contraseña debe tener al menos 6 caracteres"); return; }
   await conAutorizacionAdmin(async (adminUsuario, adminPassword)=>{
     try{
-      const res = await fetch(urlParaLogin(), {
+      const res = await fetch(urlServidorPrincipal(), {
         method:"POST",
         body: new URLSearchParams({ _action:"crear_usuario", nuevoUsuario:nuevoUsuario, nuevaPassword:nuevaPassword, nuevoEsAdmin:String(esAdmin), _adminUsuario:adminUsuario, _adminPassword:adminPassword })
       });
@@ -1064,7 +1080,7 @@ async function getLiberacionesUrl(){
   const rows = await idbGetAll("config");
   const row = rows.find(r=>r.key==="liberacionesUrl");
   if(row && row.value) return row.value;
-  return urlConfigCompartida(); // cualquier formulario que tenga URL configurada
+  return urlServidorPrincipal(); // cualquier formulario que tenga URL configurada
 }
 async function setLiberacionesUrl(url){ await idbPut("config", {key:"liberacionesUrl", value:url}); }
 
@@ -1152,9 +1168,9 @@ function renderLiberaciones(parsed){
   }
 
   const secciones = [
-    { titulo:"Rechazados",       rows:parsed.rechazados||[],     conBoton:true,  aviso:parsed.avisoPrincipal },
-    { titulo:"Avance Aprobado",  rows:parsed.avanceAprobado||[], conBoton:true,  aviso:parsed.avisoPrincipal },
-    { titulo:"Vigas Tarea 0",    rows:parsed.vigasT0||[],        conBoton:false, aviso:parsed.avisoVigasT0 }
+    { titulo:"Rechazados",       rows:parsed.rechazados||[],     conBoton:true, tipo:"principal", aviso:parsed.avisoPrincipal },
+    { titulo:"Avance Aprobado",  rows:parsed.avanceAprobado||[], conBoton:true, tipo:"principal", aviso:parsed.avisoPrincipal },
+    { titulo:"Vigas Tarea 0",    rows:parsed.vigasT0||[],        conBoton:true, tipo:"t0",        aviso:parsed.avisoVigasT0 }
   ];
 
   secciones.forEach(sec=>{
@@ -1194,7 +1210,7 @@ function renderLiberaciones(parsed){
           ${sec.rows.map(item=>`
             <tr>
               ${columnas.map(c=>`<td class="wrap">${escapeHtml(String(item[c]??""))}</td>`).join("")}
-              ${sec.conBoton ? `<td><button data-fila="${item.fila}">✅ Reparado</button></td>` : ""}
+              ${sec.conBoton ? `<td><button data-fila="${item.fila}" data-tipo="${sec.tipo}">✅ Reparado</button></td>` : ""}
             </tr>
           `).join("")}
         </tbody>
@@ -1210,7 +1226,7 @@ document.getElementById("liberacionesList").addEventListener("click", async (e)=
   if(!ok) return;
   const url = await getLiberacionesUrl();
   try{
-    const res = await fetch(url, { method:"POST", body: new URLSearchParams({ _action:"marcar_reparado", fila: btn.dataset.fila }) });
+    const res = await fetch(url, { method:"POST", body: new URLSearchParams({ _action:"marcar_reparado", fila: btn.dataset.fila, tipo: btn.dataset.tipo || "principal" }) });
     const text = await res.text();
     let parsed = null;
     try{ parsed = JSON.parse(text); }catch(e){}
@@ -1616,7 +1632,20 @@ function retriggerErr(el, cls){
   el.classList.add(cls);
 }
 
+let guardandoEnCurso = false;
 async function guardarRevision(){
+  if(guardandoEnCurso) return; // evita que un doble-toque accidental cree dos revisiones
+  guardandoEnCurso = true;
+  const btnGuardarEl = document.getElementById("btnGuardar");
+  if(btnGuardarEl) btnGuardarEl.disabled = true;
+  try{
+    await guardarRevisionInterno_();
+  } finally {
+    guardandoEnCurso = false;
+    if(btnGuardarEl) btnGuardarEl.disabled = false;
+  }
+}
+async function guardarRevisionInterno_(){
   if(!validateForm()){ showToast("Revisa los campos obligatorios (marcados en rojo)"); return; }
   const f = activeForm();
   let questionsChanged = false;

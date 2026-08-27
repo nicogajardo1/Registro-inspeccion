@@ -674,12 +674,14 @@ document.getElementById("btnLogin").addEventListener("click", async ()=>{
     });
     const text = await res.text();
     let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
-    if(parsed && parsed.status === "ok"){
+    if(parsed && parsed.status === "ok" && parsed.usuario){
       SESION = { usuario: parsed.usuario, esAdmin: !!parsed.esAdmin };
       SESION_PASSWORD_TEMP = password;
       await guardarSesionLocal(SESION);
       ocultarPantallaLogin();
       await continuarCargaDespuesDeLogin();
+    } else if(parsed && parsed.status === "ok" && !parsed.usuario){
+      mostrarErrorLogin("⚠️ El servidor respondió, pero no reconoce el sistema de usuarios. Tu Codigo.gs está desactualizado: vuelve a pegar la versión más reciente y crea una NUEVA implementación (no basta con guardar).");
     } else {
       mostrarErrorLogin((parsed && parsed.message) || "No se pudo verificar. Revisa la URL configurada o tu conexión.");
     }
@@ -2259,6 +2261,14 @@ function chequeoRefrescoDiarioHistorial(){
   await openDB();
   await loadConfig(); // trae FORMS ya guardados localmente (si los hay), necesarios para saber a qué URL validar el login
   SESION = await cargarSesionLocal();
+  if(SESION && !SESION.usuario){
+    // Sesión "fantasma": quedó guardada por un login que el servidor
+    // aceptó antes de este arreglo, sin devolver el usuario real (típico
+    // de un Codigo.gs desactualizado). Se descarta y se pide iniciar
+    // sesión de nuevo en vez de mostrar la pantalla de cuenta rota.
+    await borrarSesionLocal();
+    SESION = null;
+  }
   if(!SESION){
     mostrarPantallaLogin();
     return; // todo lo demás espera a que se inicie sesión (ver btnLogin)

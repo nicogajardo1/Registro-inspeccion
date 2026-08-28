@@ -228,6 +228,7 @@
       <div class="login-error" id="loginError"></div>
       <button class="btn btn-primary" id="btnLogin" style="margin-top:16px;">Iniciar sesión</button>
       <div class="hint" style="text-align:center; margin-top:12px;">La sesión queda guardada en este dispositivo — no hace falta iniciarla cada vez que abras la app, solo la primera vez.</div>
+      <div class="hint" id="loginUrlInfo" style="text-align:center; margin-top:10px; word-break:break-all;"></div>
     </div>
   </div>
 
@@ -280,14 +281,15 @@
     <div class="home-section-title">Configuración de formularios</div>
     <div class="card" style="margin-bottom:10px;">
       <div class="hint" style="margin-top:0;">
-        Las preguntas, alternativas y condiciones se comparten solas entre
-        dispositivos cada ~30 segundos. Si acabas de hacer cambios y
-        quieres confirmarlos ya mismo (o si en otro celular no te aparece
-        lo nuevo), usa estos botones.
+        Las preguntas, alternativas, condiciones y las marcas detenidas se
+        comparten solas entre dispositivos cada ~30 segundos. Si acabas de
+        hacer cambios y quieres confirmarlos ya mismo (o si en otro
+        celular no te aparece lo nuevo), usa estos botones.
       </div>
+      <div class="hint" id="homeUrlInfo" style="margin-top:10px; word-break:break-all;"></div>
     </div>
-    <button class="btn btn-outline-light" id="btnCompartirConfigAhora">📤 Compartir mis formularios ahora</button>
-    <button class="btn btn-outline-light" id="btnBuscarActualizacion" style="margin-top:10px;">🔄 Buscar actualización de formularios</button>
+    <button class="btn btn-outline-light" id="btnCompartirConfigAhora">📤 Compartir formularios y marcas ahora</button>
+    <button class="btn btn-outline-light" id="btnBuscarActualizacion" style="margin-top:10px;">🔄 Buscar actualización</button>
   </main>
 
   <!-- ============ SCREEN: gestión de usuarios (solo administradores) ============ -->
@@ -579,6 +581,18 @@ function urlServidorPrincipal(){
   const conUrl = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
   return (conUrl ? conUrl.webAppUrl.trim() : "") || DEFAULT_WEB_APP_URL;
 }
+// Indica si la URL en uso viene de un formulario configurado explícitamente
+// o si se está usando el respaldo grabado en el código (DEFAULT_WEB_APP_URL).
+// Esto es clave para detectar cuando dos dispositivos terminan hablando con
+// Apps Scripts DISTINTOS sin que se note a simple vista.
+function origenUrlServidor(){
+  const conUrl = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
+  return conUrl ? "configurada" : "respaldo";
+}
+function urlCorta(url){
+  if(!url) return "(vacía)";
+  return "…" + url.slice(-24);
+}
 // Devuelve true/false según si realmente logró subir la configuración.
 // Antes esto asumía éxito aunque el servidor fallara — ahora se confirma.
 async function subirConfigAServidor(){
@@ -636,6 +650,66 @@ async function bajarConfigDelServidorSiHayVersionNueva(){
   }
 }
 
+async function getMarcasUpdatedAtLocal(){
+  const rows = await idbGetAll("config");
+  const row = rows.find(r=>r.key==="marcasUpdatedAt");
+  return row ? Number(row.value) || 0 : 0;
+}
+async function setMarcasUpdatedAtLocal(valor){
+  await idbPut("config", {key:"marcasUpdatedAt", value:Number(valor) || 0});
+}
+async function subirMarcasAServidor(){
+  const url = urlServidorPrincipal();
+  if(!url) return { ok:false, motivo:"Ningún formulario tiene URL de Apps Script configurada" };
+  if(!navigator.onLine) return { ok:false, motivo:"Sin conexión" };
+  try{
+    const res = await fetch(url, {
+      method:"POST",
+      body: new URLSearchParams({ _action:"guardar_marcas", marcasConfig: JSON.stringify(MARCAS) })
+    });
+    const text = await res.text();
+    let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
+    if(parsed && parsed.status === "ok"){
+      await setMarcasUpdatedAtLocal(parsed.updatedAt);
+      return { ok:true };
+    }
+    return { ok:false, motivo:(parsed && parsed.message) || "El servidor no confirmó el guardado (¿actualizaste también el Codigo.gs?)" };
+  }catch(err){
+    return { ok:false, motivo:"No se pudo contactar el servidor" };
+  }
+}
+async function bajarMarcasDelServidorSiHayVersionNueva(){
+  const url = urlServidorPrincipal();
+  if(!url || !navigator.onLine) return { ok:false, motivo:"Sin conexión o sin URL" };
+  try{
+    const sep = url.includes("?") ? "&" : "?";
+    const res = await fetch(url + sep + "action=marcas_compartidas");
+    const text = await res.text();
+    let parsed = null; try{ parsed = JSON.parse(text); }catch(e){}
+    if(!parsed || parsed.status !== "ok"){
+      return { ok:false, motivo:(parsed && parsed.message) || "El servidor no respondió correctamente (¿actualizaste el Codigo.gs?)" };
+    }
+    if(!parsed.marcasConfig){
+      return { ok:false, motivo:"Todavía no hay marcas detenidas compartidas en el servidor." };
+    }
+    const localUpdatedAt = await getMarcasUpdatedAtLocal();
+    const remoteUpdatedAt = Number(parsed.updatedAt) || 0;
+    if(remoteUpdatedAt > localUpdatedAt){
+      const nuevasMarcas = JSON.parse(parsed.marcasConfig);
+      if(Array.isArray(nuevasMarcas)){
+        MARCAS = nuevasMarcas;
+        for(const m of MARCAS){ await idbPut("marcas", m); }
+        await setMarcasUpdatedAtLocal(remoteUpdatedAt);
+        if(document.getElementById("screen-marcas").style.display !== "none"){ renderMarcas(); }
+        return { ok:true, actualizado:true };
+      }
+    }
+    return { ok:true, actualizado:false };
+  }catch(err){
+    return { ok:false, motivo:"No se pudo contactar el servidor" };
+  }
+}
+
 /* =========================================================
    SESIÓN (inicio de sesión por dispositivo)
    ========================================================= */
@@ -650,7 +724,13 @@ async function guardarSesionLocal(sesion){
 async function borrarSesionLocal(){
   await idbDelete("config", "sesion");
 }
-function mostrarPantallaLogin(){ document.getElementById("screen-login").style.display = "flex"; }
+function mostrarPantallaLogin(){
+  const info = document.getElementById("loginUrlInfo");
+  const origen = origenUrlServidor();
+  info.innerHTML = `Este dispositivo va a validar contra: <b>${escapeHtml(urlCorta(urlServidorPrincipal()))}</b>` +
+    (origen === "respaldo" ? ` <span style="color:var(--err); font-weight:700;">(URL de respaldo del código, no configurada explícitamente — compárala con tus otros dispositivos)</span>` : ` (URL configurada en un formulario)`);
+  document.getElementById("screen-login").style.display = "flex";
+}
 function ocultarPantallaLogin(){ document.getElementById("screen-login").style.display = "none"; }
 function mostrarErrorLogin(msg){
   const el = document.getElementById("loginError");
@@ -747,18 +827,29 @@ async function conAutorizacionAdmin(accion){
 }
 
 document.getElementById("btnCompartirConfigAhora").addEventListener("click", async ()=>{
-  if(FORMS.length === 0){ showToast("No tienes ningún formulario configurado todavía"); return; }
   showToast("Compartiendo…");
-  const resultado = await subirConfigAServidor();
-  if(resultado.ok) showToast("✅ Tu configuración actual quedó guardada en el servidor. Los demás dispositivos la van a recibir en menos de 30 segundos (o al tocar '🔄 Buscar actualización').");
-  else showToast("❌ No se pudo compartir: " + resultado.motivo);
+  const resultadoForms = FORMS.length > 0 ? await subirConfigAServidor() : { ok:true };
+  const resultadoMarcas = await subirMarcasAServidor();
+  if(resultadoForms.ok && resultadoMarcas.ok){
+    showToast("✅ Formularios y marcas detenidas quedaron guardados en el servidor. Los demás dispositivos los reciben en menos de 30 segundos (o al tocar '🔄 Buscar actualización').");
+  } else {
+    const errores = [];
+    if(!resultadoForms.ok) errores.push("Formularios: " + resultadoForms.motivo);
+    if(!resultadoMarcas.ok) errores.push("Marcas: " + resultadoMarcas.motivo);
+    showToast("❌ No se pudo compartir todo — " + errores.join(" · "));
+  }
 });
 document.getElementById("btnBuscarActualizacion").addEventListener("click", async ()=>{
   showToast("Buscando actualización…");
-  const resultado = await bajarConfigDelServidorSiHayVersionNueva();
-  if(resultado.ok && resultado.actualizado) showToast("✅ Se actualizó con la versión más reciente compartida por otro dispositivo.");
-  else if(resultado.ok) showToast("Ya tienes la versión más reciente — no había cambios nuevos.");
-  else showToast("❌ No se pudo buscar actualización: " + resultado.motivo);
+  const resultadoForms = await bajarConfigDelServidorSiHayVersionNueva();
+  const resultadoMarcas = await bajarMarcasDelServidorSiHayVersionNueva();
+  if(!resultadoForms.ok && !resultadoMarcas.ok){
+    showToast("❌ No se pudo buscar actualización: " + resultadoForms.motivo);
+    return;
+  }
+  const huboCambios = (resultadoForms.ok && resultadoForms.actualizado) || (resultadoMarcas.ok && resultadoMarcas.actualizado);
+  if(huboCambios) showToast("✅ Se actualizó con la versión más reciente compartida por otro dispositivo.");
+  else showToast("Ya tenías la versión más reciente — no había cambios nuevos.");
 });
 document.getElementById("btnGestionarUsuarios").addEventListener("click", openUsuariosScreen);
 async function openUsuariosScreen(){
@@ -1015,6 +1106,7 @@ async function openMarcasScreen(){
   renderMarcas();
   updateMarcasPreview();
   updateStatusPill();
+  bajarMarcasDelServidorSiHayVersionNueva(); // trae lo que otros dispositivos hayan agregado, en segundo plano
 }
 async function distinctProyectos(){
   const set = new Set();
@@ -1246,8 +1338,16 @@ function goHome(){
   document.getElementById("topSub").textContent = "QA/QC · Maestranza";
   renderHome();
   renderCuentaInfo();
+  renderHomeUrlInfo();
   refreshTicker();
   updateStatusPill();
+}
+function renderHomeUrlInfo(){
+  const info = document.getElementById("homeUrlInfo");
+  if(!info) return;
+  const origen = origenUrlServidor();
+  info.innerHTML = `Este dispositivo usa: <b>${escapeHtml(urlCorta(urlServidorPrincipal()))}</b>` +
+    (origen === "respaldo" ? ` <span style="color:var(--err); font-weight:700;">— URL de respaldo, NO configurada explícitamente. Compárala con tus otros dispositivos: si son distintas, ahí está el problema.</span>` : ` (configurada en un formulario)`);
 }
 document.getElementById("btnBackHome").addEventListener("click", goHome);
 document.getElementById("btnConfig").addEventListener("click", ()=>{ if(ACTIVE_FORM_ID) openBuilder(ACTIVE_FORM_ID); });
@@ -1322,6 +1422,7 @@ document.getElementById("marcasList").addEventListener("click", async (e)=>{
     MARCAS = MARCAS.filter(m=>m.id!==btnDel.dataset.id);
     await renderProyectoSelect();
     renderMarcas();
+    subirMarcasAServidor();
   }
 });
 function salirModoEdicionMarca(){
@@ -1354,6 +1455,7 @@ document.getElementById("btnAddMarca").addEventListener("click", async ()=>{
     salirModoEdicionMarca();
     await renderProyectoSelect();
     renderMarcas();
+    subirMarcasAServidor();
     showToast("Marca detenida actualizada");
     return;
   }
@@ -1373,6 +1475,7 @@ document.getElementById("btnAddMarca").addEventListener("click", async ()=>{
   const sel2 = document.getElementById("md_proyecto_select");
   if([...sel2.options].some(o=>o.value===proyecto)) sel2.value = proyecto;
   renderMarcas();
+  subirMarcasAServidor();
   showToast(marcas.length === 1 ? "Marca detenida agregada" : `${marcas.length} marcas detenidas agregadas`);
 });
 
@@ -2284,11 +2387,13 @@ async function continuarCargaDespuesDeLogin(){
   updateStatusPill();
   trySync();
   bajarConfigDelServidorSiHayVersionNueva();
+  bajarMarcasDelServidorSiHayVersionNueva();
   ultimoDiaHistorialRenderizado = inicioPeriodoActual().toDateString();
   setInterval(()=>{
     trySync();
     chequeoRefrescoDiarioHistorial();
     bajarConfigDelServidorSiHayVersionNueva();
+    bajarMarcasDelServidorSiHayVersionNueva();
   }, 30000);
 }
 
@@ -2296,9 +2401,28 @@ async function continuarCargaDespuesDeLogin(){
 // abra sin internet. Solo funciona si la app se sirve por HTTPS (como
 // GitHub Pages) — si la abres como archivo local (file://) esto se salta
 // solo, sin errores, y la app sigue funcionando igual gracias a IndexedDB.
+//
+// IMPORTANTE (esto era la causa más probable de que el celular mostrara
+// una versión vieja aunque ya hubieras subido los archivos nuevos a
+// GitHub): antes, cuando el navegador detectaba una versión nueva del
+// service worker, la dejaba "esperando" hasta que cerraras TODAS las
+// pestañas de la app — algo que casi nunca pasa en un celular, donde la
+// app queda abierta en segundo plano días enteros. Ahora, apenas detecta
+// una versión nueva, la activa y RECARGA la página sola.
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  let recargandoPorSwNuevo = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (recargandoPorSwNuevo) return;
+    recargandoPorSwNuevo = true;
+    window.location.reload();
+  });
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("service-worker.js").catch(()=>{ /* si falla, la app sigue funcionando normal */ });
+    navigator.serviceWorker.register("service-worker.js").then((reg)=>{
+      // Revisa cada vez que se abre la app si hay una versión nueva del
+      // service worker publicada en GitHub, en vez de esperar a que el
+      // navegador decida chequear por su cuenta (que puede tardar horas).
+      reg.update().catch(()=>{});
+    }).catch(()=>{ /* si falla, la app sigue funcionando normal */ });
   });
 }
 </script>

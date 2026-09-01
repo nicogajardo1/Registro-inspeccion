@@ -373,24 +373,11 @@
     <main>
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px;">
         <button class="btn btn-secondary" id="btnRefreshLib" style="width:auto; flex:1;">🔄 Actualizar lista</button>
-        <button class="icon-btn" id="btnConfigLib" title="Configuración" style="background:var(--steel-700); color:#fff; border-radius:8px;">⚙</button>
+        <button class="icon-btn" id="btnConfigLib" title="Corregir URL del servidor" style="background:var(--steel-700); color:#fff; border-radius:8px;">⚙</button>
       </div>
+      <div id="liberacionesUrlInfo" class="hint" style="margin-bottom:10px; word-break:break-all;"></div>
       <div id="liberacionesList"></div>
     </main>
-  </div>
-
-  <!-- MODAL: configuración de Liberaciones (separada de la lista) -->
-  <div class="modal-backdrop" id="libConfigModal">
-    <div class="modal">
-      <h3>Configuración · Liberaciones pendientes</h3>
-      <label>URL del Apps Script</label>
-      <input type="text" id="lib_url" placeholder="https://script.google.com/macros/s/.../exec">
-      <div class="hint">Normalmente es la misma URL que usas en tus formularios — deben apuntar al mismo Apps Script / planilla "Registro de inspecciones".</div>
-      <div class="btn-row">
-        <button class="btn btn-ghost" id="btnCloseLibConfig">Cerrar</button>
-        <button class="btn btn-primary" id="btnSaveLibUrl">Guardar URL</button>
-      </div>
-    </div>
   </div>
 
   <!-- MODAL: editar una revisión ya guardada (desde Historial) -->
@@ -571,6 +558,11 @@ async function loadConfig(){
   const map = {};
   rows.forEach(r=> map[r.key] = r.value);
   URL_SERVIDOR_MANUAL = map.urlServidorManual || "";
+  if(map.liberacionesUrl !== undefined){
+    // Limpieza de una fuente de URL vieja y separada que ya no se usa
+    // (ver nota junto a getLiberacionesUrl más abajo).
+    await idbDelete("config", "liberacionesUrl");
+  }
   if(map.forms){
     FORMS = JSON.parse(map.forms);
   } else {
@@ -1239,13 +1231,16 @@ document.getElementById("md_marca").addEventListener("input", updateMarcasPrevie
    leídas y actualizadas directo en la hoja "02_NO TOCAR #")
    ========================================================= */
 document.getElementById("btnOpenLiberaciones").addEventListener("click", openLiberacionesScreen);
-async function getLiberacionesUrl(){
-  const rows = await idbGetAll("config");
-  const row = rows.find(r=>r.key==="liberacionesUrl");
-  if(row && row.value) return row.value;
-  return urlServidorPrincipal(); // cualquier formulario que tenga URL configurada
+// Antes esta función tenía su PROPIA URL guardada aparte (clave
+// "liberacionesUrl" en IndexedDB), configurable desde un modal propio.
+// Esa fue justamente la causa de que Liberaciones pendientes terminara
+// hablándole a un Apps Script distinto al resto de la app: esa URL
+// separada quedó desactualizada mientras la URL "principal" sí se iba
+// corrigiendo. Ahora usa la misma urlServidorPrincipal() que todo lo
+// demás — una sola fuente de verdad, sin excepciones.
+function getLiberacionesUrl(){
+  return urlServidorPrincipal();
 }
-async function setLiberacionesUrl(url){ await idbPut("config", {key:"liberacionesUrl", value:url}); }
 
 async function openLiberacionesScreen(){
   ACTIVE_FORM_ID = null;
@@ -1254,27 +1249,35 @@ async function openLiberacionesScreen(){
   document.getElementById("btnBackHome").style.display = "";
   document.getElementById("topTitle").textContent = "Liberaciones pendientes";
   document.getElementById("topSub").textContent = "Rechazados / avance aprobado / vigas T0";
+  renderLiberacionesUrlInfo();
   updateStatusPill();
   refreshLiberaciones();
 }
+function renderLiberacionesUrlInfo(){
+  const info = document.getElementById("liberacionesUrlInfo");
+  if(!info) return;
+  const origen = origenUrlServidor();
+  const etiqueta = origen === "respaldo"
+    ? `<span style="color:var(--err); font-weight:700;">— URL de respaldo, puede estar desactualizada. Toca ⚙ para corregirla.</span>`
+    : `(${origen === "manual" ? "definida a mano en este dispositivo" : "configurada en un formulario"})`;
+  info.innerHTML = `Consultando: <b>${escapeHtml(urlCorta(getLiberacionesUrl()))}</b> ${etiqueta}`;
+}
 document.getElementById("btnConfigLib").addEventListener("click", async ()=>{
-  document.getElementById("lib_url").value = await getLiberacionesUrl();
-  document.getElementById("libConfigModal").classList.add("show");
-});
-document.getElementById("btnCloseLibConfig").addEventListener("click", ()=>{
-  document.getElementById("libConfigModal").classList.remove("show");
-});
-document.getElementById("btnSaveLibUrl").addEventListener("click", async ()=>{
-  await setLiberacionesUrl(document.getElementById("lib_url").value.trim());
-  showToast("URL guardada");
-  document.getElementById("libConfigModal").classList.remove("show");
+  const actual = getLiberacionesUrl();
+  const nueva = await showPrompt("Pega aquí la URL correcta del Apps Script (debe terminar en /exec). Esto corrige la URL para TODA la app en este dispositivo, no solo para Liberaciones.", actual, "URL del servidor para este dispositivo");
+  if(nueva === null) return;
+  const limpia = nueva.trim();
+  if(!limpia){ showToast("La URL no puede quedar vacía"); return; }
+  await guardarUrlServidorManual(limpia);
+  showToast("URL actualizada en este dispositivo ✓");
+  renderLiberacionesUrlInfo();
   refreshLiberaciones();
 });
 document.getElementById("btnRefreshLib").addEventListener("click", refreshLiberaciones);
 
 async function refreshLiberaciones(){
   const list = document.getElementById("liberacionesList");
-  const url = await getLiberacionesUrl();
+  const url = getLiberacionesUrl();
   if(!url){ list.innerHTML = `<div class="empty">Configura primero la URL (⚙ arriba a la derecha).</div>`; return; }
   if(!navigator.onLine){ list.innerHTML = `<div class="empty">Necesitas conexión a internet para ver esta lista.</div>`; return; }
   list.innerHTML = `<div class="empty">Cargando…</div>`;
@@ -1387,7 +1390,7 @@ document.getElementById("liberacionesList").addEventListener("click", async (e)=
   if(!btn) return;
   const ok = await showConfirm("¿Confirmas que este elemento ya fue reparado? Se actualizará tu planilla (columna de reparado pasará a Sí).", "¿Marcar como reparado?");
   if(!ok) return;
-  const url = await getLiberacionesUrl();
+  const url = getLiberacionesUrl();
   try{
     const res = await fetch(url, { method:"POST", body: new URLSearchParams({ _action:"marcar_reparado", fila: btn.dataset.fila, tipo: btn.dataset.tipo || "principal" }) });
     const text = await res.text();

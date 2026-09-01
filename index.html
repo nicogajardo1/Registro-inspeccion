@@ -228,6 +228,16 @@
       <div class="login-error" id="loginError"></div>
       <button class="btn btn-primary" id="btnLogin" style="margin-top:16px;">Iniciar sesión</button>
       <div class="hint" style="text-align:center; margin-top:12px;">La sesión queda guardada en este dispositivo — no hace falta iniciarla cada vez que abras la app, solo la primera vez.</div>
+
+      <details style="margin-top:14px;">
+        <summary style="cursor:pointer; font-size:12px; color:var(--ink-soft); text-align:center;">⚙ Opciones avanzadas (URL del servidor)</summary>
+        <div style="margin-top:10px;">
+          <label>URL del Apps Script</label>
+          <input type="text" id="login_url" placeholder="https://script.google.com/macros/s/.../exec">
+          <div class="hint">Si este dispositivo es nuevo, pídele a un administrador la URL exacta que están usando los demás (la puedes ver en cualquier otro dispositivo, en el home, sección "Configuración de formularios"). Se guarda solo en este dispositivo al iniciar sesión.</div>
+        </div>
+      </details>
+
       <div class="hint" id="loginUrlInfo" style="text-align:center; margin-top:10px; word-break:break-all;"></div>
     </div>
   </div>
@@ -424,6 +434,19 @@
     </div>
   </div>
 
+  <!-- MODAL: pedir un texto corto (reemplaza window.prompt, que puede fallar en navegadores integrados) -->
+  <div class="modal-backdrop" id="promptModal">
+    <div class="modal modal-confirm">
+      <h3 id="promptTitle">Escribe un valor</h3>
+      <p id="promptMsg"></p>
+      <input type="text" id="promptInput">
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnPromptCancel">Cancelar</button>
+        <button class="btn btn-primary" id="btnPromptOk">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: reautorizar acción de administrador con la contraseña -->
   <div class="modal-backdrop" id="adminAuthModal">
     <div class="modal modal-confirm">
@@ -472,7 +495,7 @@
   </div>
 
 <script>
-const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycby2DkDaSp7ClubWNhpUrfc8V3w_1YAsHnywKEAKzWI_Dywl651bYKYzkOXsztwvYM9K/exec";
+const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyiMk2bp-QTdrt3Wq4TEsKS9bWpBggwnqPnPCwk9eQv3M5nb_ypbyPTF5EQgbg-8aD/exec";
 const OTRO_VALUE = "__otro__";
 const NONE_VALUE = "";
 
@@ -541,10 +564,13 @@ function idbGetAll(store){ return new Promise((res,rej)=>{ const r=txStore(store
 function idbPut(store, value){ return new Promise((res,rej)=>{ const r=txStore(store,"readwrite").put(value); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }
 function idbDelete(store, key){ return new Promise((res,rej)=>{ const r=txStore(store,"readwrite").delete(key); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }
 
+let URL_SERVIDOR_MANUAL = ""; // si se definió a mano en el login de este dispositivo, manda por sobre todo lo demás
+
 async function loadConfig(){
   const rows = await idbGetAll("config");
   const map = {};
   rows.forEach(r=> map[r.key] = r.value);
+  URL_SERVIDOR_MANUAL = map.urlServidorManual || "";
   if(map.forms){
     FORMS = JSON.parse(map.forms);
   } else {
@@ -556,6 +582,10 @@ async function loadConfig(){
   MARCAS = await idbGetAll("marcas");
 }
 async function persistForms(){ await idbPut("config", {key:"forms", value: JSON.stringify(FORMS)}); }
+async function guardarUrlServidorManual(url){
+  URL_SERVIDOR_MANUAL = (url||"").trim();
+  await idbPut("config", {key:"urlServidorManual", value:URL_SERVIDOR_MANUAL});
+}
 
 /* =========================================================
    CONFIGURACIÓN COMPARTIDA ENTRE DISPOSITIVOS
@@ -571,21 +601,22 @@ async function getConfigUpdatedAtLocal(){
 async function setConfigUpdatedAtLocal(valor){
   await idbPut("config", {key:"configUpdatedAt", value:Number(valor) || 0});
 }
-// Única fuente de verdad para "a qué Apps Script le hablamos": se usa
-// para el login, para compartir/bajar la configuración de formularios, y
-// para Liberaciones pendientes. Antes existían dos funciones parecidas
-// (una con respaldo a DEFAULT_WEB_APP_URL y otra sin él) y podían quedar
-// apuntando a URLs distintas entre pantallas — eso rompía la
-// sincronización entre dispositivos. Ahora es una sola.
+// Única fuente de verdad para "a qué Apps Script le hablamos": se usa para
+// el login, para compartir/bajar configuración, y para Liberaciones
+// pendientes. Orden de prioridad:
+// 1) URL definida a mano en este dispositivo (login → Opciones avanzadas)
+// 2) URL configurada en cualquier formulario
+// 3) Respaldo grabado en el código (DEFAULT_WEB_APP_URL) — puede quedar
+//    desactualizado si alguna vez vuelves a implementar el script y no
+//    avisas para actualizarlo aquí; por eso la opción 1 existe, para poder
+//    corregirlo sin depender de que el código tenga el valor exacto.
 function urlServidorPrincipal(){
+  if(URL_SERVIDOR_MANUAL) return URL_SERVIDOR_MANUAL;
   const conUrl = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
   return (conUrl ? conUrl.webAppUrl.trim() : "") || DEFAULT_WEB_APP_URL;
 }
-// Indica si la URL en uso viene de un formulario configurado explícitamente
-// o si se está usando el respaldo grabado en el código (DEFAULT_WEB_APP_URL).
-// Esto es clave para detectar cuando dos dispositivos terminan hablando con
-// Apps Scripts DISTINTOS sin que se note a simple vista.
 function origenUrlServidor(){
+  if(URL_SERVIDOR_MANUAL) return "manual";
   const conUrl = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
   return conUrl ? "configurada" : "respaldo";
 }
@@ -727,8 +758,14 @@ async function borrarSesionLocal(){
 function mostrarPantallaLogin(){
   const info = document.getElementById("loginUrlInfo");
   const origen = origenUrlServidor();
+  document.getElementById("login_url").value = urlServidorPrincipal();
+  const etiquetas = {
+    manual: " (la definiste a mano en este dispositivo)",
+    configurada: " (URL configurada en un formulario)",
+    respaldo: ' — respaldo grabado en el código, puede estar desactualizado. Abre "Opciones avanzadas" arriba y verifica que coincida con tus otros dispositivos.'
+  };
   info.innerHTML = `Este dispositivo va a validar contra: <b>${escapeHtml(urlCorta(urlServidorPrincipal()))}</b>` +
-    (origen === "respaldo" ? ` <span style="color:var(--err); font-weight:700;">(URL de respaldo del código, no configurada explícitamente — compárala con tus otros dispositivos)</span>` : ` (URL configurada en un formulario)`);
+    (origen === "respaldo" ? ` <span style="color:var(--err); font-weight:700;">${etiquetas.respaldo}</span>` : etiquetas[origen]);
   document.getElementById("screen-login").style.display = "flex";
 }
 function ocultarPantallaLogin(){ document.getElementById("screen-login").style.display = "none"; }
@@ -742,9 +779,17 @@ function limpiarErrorLogin(){ document.getElementById("loginError").classList.re
 document.getElementById("btnLogin").addEventListener("click", async ()=>{
   const usuario = document.getElementById("login_usuario").value.trim();
   const password = document.getElementById("login_password").value;
+  const urlEscrita = document.getElementById("login_url").value.trim();
   limpiarErrorLogin();
   if(!usuario || !password){ mostrarErrorLogin("Escribe tu usuario y contraseña"); return; }
+  if(!urlEscrita){ mostrarErrorLogin("Falta la URL del servidor (ábrela en 'Opciones avanzadas')"); return; }
   if(!navigator.onLine){ mostrarErrorLogin("Necesitas conexión a internet para iniciar sesión la primera vez en este dispositivo"); return; }
+  // Si la URL mostrada no coincide con lo que quedó escrito (porque el
+  // usuario la corrigió a mano), se guarda ANTES de intentar el login,
+  // así queda recordada en este dispositivo para todo lo demás también.
+  if(urlEscrita !== urlServidorPrincipal()){
+    await guardarUrlServidorManual(urlEscrita);
+  }
   const btn = document.getElementById("btnLogin");
   btn.disabled = true; btn.textContent = "Verificando…";
   try{
@@ -973,6 +1018,30 @@ document.getElementById("btnConfirmCancel").addEventListener("click", ()=>{
   document.getElementById("confirmModal").classList.remove("show");
   if(confirmResolver) confirmResolver(false);
   confirmResolver = null;
+});
+
+// Reemplazo de window.prompt(): en algunos navegadores integrados (por
+// ejemplo el visor de WhatsApp) los diálogos nativos como prompt()/alert()
+// vienen bloqueados y simplemente no hacen nada. Este modal propio
+// funciona siempre. Devuelve el texto escrito, o null si cancelan.
+let promptResolver = null;
+function showPrompt(message, valorInicial, title){
+  document.getElementById("promptTitle").textContent = title || "Escribe un valor";
+  document.getElementById("promptMsg").textContent = message || "";
+  document.getElementById("promptInput").value = valorInicial || "";
+  document.getElementById("promptModal").classList.add("show");
+  return new Promise(resolve=>{ promptResolver = resolve; });
+}
+document.getElementById("btnPromptOk").addEventListener("click", ()=>{
+  const valor = document.getElementById("promptInput").value;
+  document.getElementById("promptModal").classList.remove("show");
+  if(promptResolver) promptResolver(valor);
+  promptResolver = null;
+});
+document.getElementById("btnPromptCancel").addEventListener("click", ()=>{
+  document.getElementById("promptModal").classList.remove("show");
+  if(promptResolver) promptResolver(null);
+  promptResolver = null;
 });
 
 /* =========================================================
@@ -1346,8 +1415,24 @@ function renderHomeUrlInfo(){
   const info = document.getElementById("homeUrlInfo");
   if(!info) return;
   const origen = origenUrlServidor();
+  const etiquetas = {
+    manual: " (definida a mano en este dispositivo)",
+    configurada: " (configurada en un formulario)",
+    respaldo: " — respaldo grabado en el código, puede estar desactualizado."
+  };
   info.innerHTML = `Este dispositivo usa: <b>${escapeHtml(urlCorta(urlServidorPrincipal()))}</b>` +
-    (origen === "respaldo" ? ` <span style="color:var(--err); font-weight:700;">— URL de respaldo, NO configurada explícitamente. Compárala con tus otros dispositivos: si son distintas, ahí está el problema.</span>` : ` (configurada en un formulario)`);
+    (origen === "respaldo" ? ` <span style="color:var(--err); font-weight:700;">${etiquetas.respaldo} Compárala con tus otros dispositivos.</span>` : etiquetas[origen]) +
+    ` <button type="button" id="btnEditarUrlServidor" style="margin-left:6px; font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid #d4d2ca; background:#fff; cursor:pointer;">Corregir</button>`;
+  document.getElementById("btnEditarUrlServidor").addEventListener("click", async ()=>{
+    const actual = urlServidorPrincipal();
+    const nueva = await showPrompt("Pega aquí la URL correcta del Apps Script (debe terminar en /exec).", actual, "URL del servidor para este dispositivo");
+    if(nueva === null) return;
+    const limpia = nueva.trim();
+    if(!limpia){ showToast("La URL no puede quedar vacía"); return; }
+    await guardarUrlServidorManual(limpia);
+    showToast("URL actualizada en este dispositivo ✓");
+    renderHomeUrlInfo();
+  });
 }
 document.getElementById("btnBackHome").addEventListener("click", goHome);
 document.getElementById("btnConfig").addEventListener("click", ()=>{ if(ACTIVE_FORM_ID) openBuilder(ACTIVE_FORM_ID); });

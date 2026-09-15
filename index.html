@@ -228,17 +228,6 @@
       <div class="login-error" id="loginError"></div>
       <button class="btn btn-primary" id="btnLogin" style="margin-top:16px;">Iniciar sesión</button>
       <div class="hint" style="text-align:center; margin-top:12px;">La sesión queda guardada en este dispositivo — no hace falta iniciarla cada vez que abras la app, solo la primera vez.</div>
-
-      <details style="margin-top:14px;">
-        <summary style="cursor:pointer; font-size:12px; color:var(--ink-soft); text-align:center;">⚙ Opciones avanzadas (URL del servidor)</summary>
-        <div style="margin-top:10px;">
-          <label>URL del Apps Script</label>
-          <input type="text" id="login_url" placeholder="https://script.google.com/macros/s/.../exec">
-          <div class="hint">Si este dispositivo es nuevo, pídele a un administrador la URL exacta que están usando los demás (la puedes ver en cualquier otro dispositivo, en el home, sección "Configuración de formularios"). Se guarda solo en este dispositivo al iniciar sesión.</div>
-        </div>
-      </details>
-
-      <div class="hint" id="loginUrlInfo" style="text-align:center; margin-top:10px; word-break:break-all;"></div>
     </div>
   </div>
 
@@ -288,7 +277,26 @@
     <button class="btn btn-outline-light" id="btnOpenMarcas">📋 Marcas detenidas</button>
     <button class="btn btn-outline-light" id="btnOpenLiberaciones" style="margin-top:10px;">🔓 Liberaciones pendientes</button>
 
-    <div class="home-section-title">Configuración de formularios</div>
+    <div class="home-section-title">Configuración del sistema</div>
+    <div class="card" style="margin-bottom:10px;">
+      <h2>URL del Apps Script</h2>
+      <div class="hint" style="margin-top:0;">
+        Una sola URL para toda la app: inicio de sesión, formularios,
+        marcas detenidas y liberaciones pendientes. Todo vive en el mismo
+        Código.gs, así que no hace falta configurarla en más de un lugar
+        — esto reemplaza cualquier URL que hayas visto antes en otros
+        formularios o pantallas.
+      </div>
+      <label>URL (debe terminar en /exec)</label>
+      <input type="text" id="sys_url" placeholder="https://script.google.com/macros/s/.../exec">
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnProbarUrlSistema">🔍 Probar conexión</button>
+        <button class="btn btn-primary" id="btnGuardarUrlSistema">Guardar</button>
+      </div>
+      <div class="hint" id="homeUrlInfo" style="margin-top:10px; word-break:break-all;"></div>
+    </div>
+
+    <div class="home-section-title">Sincronizar preguntas y marcas</div>
     <div class="card" style="margin-bottom:10px;">
       <div class="hint" style="margin-top:0;">
         Las preguntas, alternativas, condiciones y las marcas detenidas se
@@ -296,7 +304,6 @@
         hacer cambios y quieres confirmarlos ya mismo (o si en otro
         celular no te aparece lo nuevo), usa estos botones.
       </div>
-      <div class="hint" id="homeUrlInfo" style="margin-top:10px; word-break:break-all;"></div>
     </div>
     <button class="btn btn-outline-light" id="btnCompartirConfigAhora">📤 Compartir formularios y marcas ahora</button>
     <button class="btn btn-outline-light" id="btnBuscarActualizacion" style="margin-top:10px;">🔄 Buscar actualización</button>
@@ -371,11 +378,7 @@
   <!-- ============ SCREEN: liberaciones pendientes ============ -->
   <div id="screen-liberaciones" style="display:none;">
     <main>
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px;">
-        <button class="btn btn-secondary" id="btnRefreshLib" style="width:auto; flex:1;">🔄 Actualizar lista</button>
-        <button class="icon-btn" id="btnConfigLib" title="Corregir URL del servidor" style="background:var(--steel-700); color:#fff; border-radius:8px;">⚙</button>
-      </div>
-      <div id="liberacionesUrlInfo" class="hint" style="margin-bottom:10px; word-break:break-all;"></div>
+      <button class="btn btn-secondary" id="btnRefreshLib" style="margin-bottom:10px;">🔄 Actualizar lista</button>
       <div id="liberacionesList"></div>
     </main>
   </div>
@@ -457,14 +460,9 @@
       <label>Nombre del formulario</label>
       <input type="text" id="bf_name" placeholder="Ej: Inspección de soldadura">
 
-      <label>URL del Web App (Google Apps Script)</label>
-      <input type="text" id="bf_url" placeholder="https://script.google.com/macros/s/.../exec">
-      <div class="hint">Pega aquí la URL publicada de tu Apps Script (debe terminar en <code>/exec</code>).</div>
-      <button class="btn btn-ghost" id="btnTestUrl" style="margin-top:10px;">🔍 Probar conexión</button>
-
       <label>Hoja (pestaña) de destino en tu Google Sheet</label>
       <input type="text" id="bf_sheet" placeholder="Registros">
-      <div class="hint">Nombre exacto de la pestaña donde deben caer las respuestas de este formulario. Si la dejas vacía, se usa "Registros" y se crea automáticamente si no existe.</div>
+      <div class="hint">Nombre exacto de la pestaña donde deben caer las respuestas de este formulario. Si la dejas vacía, se usa "Registros" y se crea automáticamente si no existe. (La URL del Apps Script es una sola para toda la app — se configura en el home, sección "Configuración del sistema".)</div>
 
       <hr class="sep">
       <div class="hint" style="margin-bottom:14px;">
@@ -482,7 +480,7 @@
   </div>
 
 <script>
-const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyiMk2bp-QTdrt3Wq4TEsKS9bWpBggwnqPnPCwk9eQv3M5nb_ypbyPTF5EQgbg-8aD/exec";
+const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxUu_1dFKgKHPV69t7tvWeJIZPbcVFYikm6nySxu5ZFPy8G6jlQK6-hnebzfJbEARGa/exec";
 const OTRO_VALUE = "__otro__";
 const NONE_VALUE = "";
 
@@ -565,10 +563,23 @@ async function loadConfig(){
   }
   if(map.forms){
     FORMS = JSON.parse(map.forms);
+    // Migración: antes cada formulario podía tener su PROPIA URL. Si este
+    // dispositivo todavía no tiene definida la URL única del sistema, se
+    // adopta la primera URL de formulario que se encuentre — así no se
+    // pierde una configuración que ya venía funcionando en este celular.
+    if(!URL_SERVIDOR_MANUAL){
+      const conUrlVieja = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
+      if(conUrlVieja){
+        await guardarUrlServidorManual(conUrlVieja.webAppUrl.trim());
+      }
+    }
   } else {
-    const legacyUrl = map.webAppUrl !== undefined ? map.webAppUrl : DEFAULT_WEB_APP_URL;
+    const legacyUrl = map.webAppUrl !== undefined ? map.webAppUrl : "";
+    if(!URL_SERVIDOR_MANUAL && legacyUrl){
+      await guardarUrlServidorManual(legacyUrl);
+    }
     const legacyQuestions = map.questions ? JSON.parse(map.questions) : defaultQuestions();
-    FORMS = [{ id: uuid(), name:"Registro de Inspección QA/QC", webAppUrl: legacyUrl, questions: legacyQuestions }];
+    FORMS = [{ id: uuid(), name:"Registro de Inspección QA/QC", questions: legacyQuestions }];
     await idbPut("config", {key:"forms", value: JSON.stringify(FORMS)});
   }
   MARCAS = await idbGetAll("marcas");
@@ -603,14 +614,10 @@ async function setConfigUpdatedAtLocal(valor){
 //    avisas para actualizarlo aquí; por eso la opción 1 existe, para poder
 //    corregirlo sin depender de que el código tenga el valor exacto.
 function urlServidorPrincipal(){
-  if(URL_SERVIDOR_MANUAL) return URL_SERVIDOR_MANUAL;
-  const conUrl = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
-  return (conUrl ? conUrl.webAppUrl.trim() : "") || DEFAULT_WEB_APP_URL;
+  return URL_SERVIDOR_MANUAL || DEFAULT_WEB_APP_URL;
 }
 function origenUrlServidor(){
-  if(URL_SERVIDOR_MANUAL) return "manual";
-  const conUrl = FORMS.find(f=>f.webAppUrl && f.webAppUrl.trim());
-  return conUrl ? "configurada" : "respaldo";
+  return URL_SERVIDOR_MANUAL ? "configurada" : "respaldo";
 }
 function urlCorta(url){
   if(!url) return "(vacía)";
@@ -748,16 +755,6 @@ async function borrarSesionLocal(){
   await idbDelete("config", "sesion");
 }
 function mostrarPantallaLogin(){
-  const info = document.getElementById("loginUrlInfo");
-  const origen = origenUrlServidor();
-  document.getElementById("login_url").value = urlServidorPrincipal();
-  const etiquetas = {
-    manual: " (la definiste a mano en este dispositivo)",
-    configurada: " (URL configurada en un formulario)",
-    respaldo: ' — respaldo grabado en el código, puede estar desactualizado. Abre "Opciones avanzadas" arriba y verifica que coincida con tus otros dispositivos.'
-  };
-  info.innerHTML = `Este dispositivo va a validar contra: <b>${escapeHtml(urlCorta(urlServidorPrincipal()))}</b>` +
-    (origen === "respaldo" ? ` <span style="color:var(--err); font-weight:700;">${etiquetas.respaldo}</span>` : etiquetas[origen]);
   document.getElementById("screen-login").style.display = "flex";
 }
 function ocultarPantallaLogin(){ document.getElementById("screen-login").style.display = "none"; }
@@ -771,17 +768,9 @@ function limpiarErrorLogin(){ document.getElementById("loginError").classList.re
 document.getElementById("btnLogin").addEventListener("click", async ()=>{
   const usuario = document.getElementById("login_usuario").value.trim();
   const password = document.getElementById("login_password").value;
-  const urlEscrita = document.getElementById("login_url").value.trim();
   limpiarErrorLogin();
   if(!usuario || !password){ mostrarErrorLogin("Escribe tu usuario y contraseña"); return; }
-  if(!urlEscrita){ mostrarErrorLogin("Falta la URL del servidor (ábrela en 'Opciones avanzadas')"); return; }
   if(!navigator.onLine){ mostrarErrorLogin("Necesitas conexión a internet para iniciar sesión la primera vez en este dispositivo"); return; }
-  // Si la URL mostrada no coincide con lo que quedó escrito (porque el
-  // usuario la corrigió a mano), se guarda ANTES de intentar el login,
-  // así queda recordada en este dispositivo para todo lo demás también.
-  if(urlEscrita !== urlServidorPrincipal()){
-    await guardarUrlServidorManual(urlEscrita);
-  }
   const btn = document.getElementById("btnLogin");
   btn.disabled = true; btn.textContent = "Verificando…";
   try{
@@ -1078,7 +1067,7 @@ function renderHome(){
         <div class="form-card-top">
           <div>
             <h3>${escapeHtml(f.name||"(sin nombre)")}</h3>
-            <div class="meta">${f.questions.length} pregunta(s) · ${f.webAppUrl ? "sincroniza a Sheets" : "sin URL configurada"}</div>
+            <div class="meta">${f.questions.length} pregunta(s) · hoja: ${escapeHtml(f.sheetName || "Registros")}</div>
           </div>
           <div class="form-card-actions">
             <button data-act="edit" data-id="${f.id}" title="Editar">✏️</button>
@@ -1110,7 +1099,7 @@ document.getElementById("formList").addEventListener("click", async (e)=>{
   }
 });
 document.getElementById("btnNewForm").addEventListener("click", async ()=>{
-  const nf = { id: uuid(), name:"Nuevo formulario", webAppUrl:"", questions:[
+  const nf = { id: uuid(), name:"Nuevo formulario", questions:[
     { id: uuid(), label:"Pregunta 1", type:"texto", required:false, column:"Pregunta 1" }
   ]};
   FORMS.push(nf);
@@ -1231,13 +1220,9 @@ document.getElementById("md_marca").addEventListener("input", updateMarcasPrevie
    leídas y actualizadas directo en la hoja "02_NO TOCAR #")
    ========================================================= */
 document.getElementById("btnOpenLiberaciones").addEventListener("click", openLiberacionesScreen);
-// Antes esta función tenía su PROPIA URL guardada aparte (clave
-// "liberacionesUrl" en IndexedDB), configurable desde un modal propio.
-// Esa fue justamente la causa de que Liberaciones pendientes terminara
-// hablándole a un Apps Script distinto al resto de la app: esa URL
-// separada quedó desactualizada mientras la URL "principal" sí se iba
-// corrigiendo. Ahora usa la misma urlServidorPrincipal() que todo lo
-// demás — una sola fuente de verdad, sin excepciones.
+// Ya no existe una URL separada para Liberaciones (esa fue justamente la
+// causa de que esta pantalla terminara hablándole a un Apps Script
+// distinto al resto de la app). Usa siempre urlServidorPrincipal().
 function getLiberacionesUrl(){
   return urlServidorPrincipal();
 }
@@ -1249,36 +1234,15 @@ async function openLiberacionesScreen(){
   document.getElementById("btnBackHome").style.display = "";
   document.getElementById("topTitle").textContent = "Liberaciones pendientes";
   document.getElementById("topSub").textContent = "Rechazados / avance aprobado / vigas T0";
-  renderLiberacionesUrlInfo();
   updateStatusPill();
   refreshLiberaciones();
 }
-function renderLiberacionesUrlInfo(){
-  const info = document.getElementById("liberacionesUrlInfo");
-  if(!info) return;
-  const origen = origenUrlServidor();
-  const etiqueta = origen === "respaldo"
-    ? `<span style="color:var(--err); font-weight:700;">— URL de respaldo, puede estar desactualizada. Toca ⚙ para corregirla.</span>`
-    : `(${origen === "manual" ? "definida a mano en este dispositivo" : "configurada en un formulario"})`;
-  info.innerHTML = `Consultando: <b>${escapeHtml(urlCorta(getLiberacionesUrl()))}</b> ${etiqueta}`;
-}
-document.getElementById("btnConfigLib").addEventListener("click", async ()=>{
-  const actual = getLiberacionesUrl();
-  const nueva = await showPrompt("Pega aquí la URL correcta del Apps Script (debe terminar en /exec). Esto corrige la URL para TODA la app en este dispositivo, no solo para Liberaciones.", actual, "URL del servidor para este dispositivo");
-  if(nueva === null) return;
-  const limpia = nueva.trim();
-  if(!limpia){ showToast("La URL no puede quedar vacía"); return; }
-  await guardarUrlServidorManual(limpia);
-  showToast("URL actualizada en este dispositivo ✓");
-  renderLiberacionesUrlInfo();
-  refreshLiberaciones();
-});
 document.getElementById("btnRefreshLib").addEventListener("click", refreshLiberaciones);
 
 async function refreshLiberaciones(){
   const list = document.getElementById("liberacionesList");
   const url = getLiberacionesUrl();
-  if(!url){ list.innerHTML = `<div class="empty">Configura primero la URL (⚙ arriba a la derecha).</div>`; return; }
+  if(!url){ list.innerHTML = `<div class="empty">Configura primero la URL en el home, sección "Configuración del sistema".</div>`; return; }
   if(!navigator.onLine){ list.innerHTML = `<div class="empty">Necesitas conexión a internet para ver esta lista.</div>`; return; }
   list.innerHTML = `<div class="empty">Cargando…</div>`;
   try{
@@ -1288,7 +1252,7 @@ async function refreshLiberaciones(){
     let parsed = null;
     try{ parsed = JSON.parse(text); }catch(e){}
     if(!parsed || parsed.status !== "ok"){
-      list.innerHTML = `<div class="empty">No se pudo leer la lista: ${escapeHtml((parsed && parsed.message) || "respuesta inválida — actualiza también tu Codigo.gs")}</div>`;
+      list.innerHTML = `<div class="empty">No se pudo leer la lista: ${escapeHtml((parsed && parsed.message) || "respuesta inválida — verifica la URL en Configuración del sistema y que el Codigo.gs esté al día")}</div>`;
       return;
     }
     renderLiberaciones(parsed);
@@ -1415,28 +1379,26 @@ function goHome(){
   updateStatusPill();
 }
 function renderHomeUrlInfo(){
+  const campo = document.getElementById("sys_url");
   const info = document.getElementById("homeUrlInfo");
-  if(!info) return;
+  if(!campo || !info) return;
+  campo.value = urlServidorPrincipal();
   const origen = origenUrlServidor();
-  const etiquetas = {
-    manual: " (definida a mano en este dispositivo)",
-    configurada: " (configurada en un formulario)",
-    respaldo: " — respaldo grabado en el código, puede estar desactualizado."
-  };
-  info.innerHTML = `Este dispositivo usa: <b>${escapeHtml(urlCorta(urlServidorPrincipal()))}</b>` +
-    (origen === "respaldo" ? ` <span style="color:var(--err); font-weight:700;">${etiquetas.respaldo} Compárala con tus otros dispositivos.</span>` : etiquetas[origen]) +
-    ` <button type="button" id="btnEditarUrlServidor" style="margin-left:6px; font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid #d4d2ca; background:#fff; cursor:pointer;">Corregir</button>`;
-  document.getElementById("btnEditarUrlServidor").addEventListener("click", async ()=>{
-    const actual = urlServidorPrincipal();
-    const nueva = await showPrompt("Pega aquí la URL correcta del Apps Script (debe terminar en /exec).", actual, "URL del servidor para este dispositivo");
-    if(nueva === null) return;
-    const limpia = nueva.trim();
-    if(!limpia){ showToast("La URL no puede quedar vacía"); return; }
-    await guardarUrlServidorManual(limpia);
-    showToast("URL actualizada en este dispositivo ✓");
-    renderHomeUrlInfo();
-  });
+  info.innerHTML = origen === "respaldo"
+    ? `<span style="color:var(--err); font-weight:700;">Usando la URL de respaldo grabada en el código — todavía no la has guardado tú mismo aquí. Si funciona, no necesitas hacer nada; si no, corrígela arriba y toca Guardar.</span>`
+    : `Guardada en este dispositivo. Todas las secciones de la app usan esta misma URL.`;
 }
+document.getElementById("btnGuardarUrlSistema").addEventListener("click", async ()=>{
+  const nueva = document.getElementById("sys_url").value.trim();
+  if(!nueva){ showToast("La URL no puede quedar vacía"); return; }
+  await guardarUrlServidorManual(nueva);
+  showToast("URL guardada — se usa en toda la app desde ahora ✓");
+  renderHomeUrlInfo();
+  updateStatusPill();
+});
+document.getElementById("btnProbarUrlSistema").addEventListener("click", ()=>{
+  probarConexionUrl(document.getElementById("sys_url").value.trim());
+});
 document.getElementById("btnBackHome").addEventListener("click", goHome);
 document.getElementById("btnConfig").addEventListener("click", ()=>{ if(ACTIVE_FORM_ID) openBuilder(ACTIVE_FORM_ID); });
 
@@ -1947,15 +1909,21 @@ async function trySync(){
   try{
   const all = await idbGetAll("registros");
   const pending = all.filter(r=>!r.synced);
+  const urlSistema = urlServidorPrincipal();
   for(const rec of pending){
     const f = FORMS.find(x=>x.id===rec.formId);
-    if(!f || !f.webAppUrl){
-      rec.lastError = "Este formulario no tiene URL de sincronización configurada";
+    if(!f){
+      rec.lastError = "El formulario de esta revisión ya no existe";
+      await idbPut("registros", rec);
+      continue;
+    }
+    if(!urlSistema){
+      rec.lastError = "No hay URL del sistema configurada (ve a Configuración del sistema en el home)";
       await idbPut("registros", rec);
       continue;
     }
     try{
-      const res = await fetch(f.webAppUrl, {
+      const res = await fetch(urlSistema, {
         method:"POST",
         body: new URLSearchParams({ id: rec.id, createdAt: rec.createdAt, _sheetName: f.sheetName || "", ...rec.data })
       });
@@ -2000,8 +1968,7 @@ function updateStatusPill(){
   const dot = document.getElementById("statusDot");
   const text = document.getElementById("statusText");
   if(!navigator.onLine){ dot.classList.add("off"); text.textContent = "Sin conexión"; return; }
-  const f = activeForm();
-  if(ACTIVE_FORM_ID && (!f || !f.webAppUrl)){ dot.classList.add("off"); text.textContent = "Falta configurar"; return; }
+  if(!urlServidorPrincipal()){ dot.classList.add("off"); text.textContent = "Falta configurar"; return; }
   dot.classList.remove("off"); text.textContent = "En línea";
 }
 
@@ -2092,10 +2059,12 @@ document.getElementById("btnSaveEditRecord").addEventListener("click", async ()=
 
   if(rec.synced && rec.filaSheet){
     const f = FORMS.find(x=>x.id===rec.formId);
-    if(!f || !f.webAppUrl){ showToast("Este formulario no tiene URL configurada"); return; }
+    const urlSistema = urlServidorPrincipal();
+    if(!f){ showToast("El formulario de esta revisión ya no existe"); return; }
+    if(!urlSistema){ showToast("No hay URL del sistema configurada (ve a Configuración del sistema en el home)"); return; }
     if(!navigator.onLine){ showToast("Sin conexión: no se puede corregir la planilla ahora mismo"); return; }
     try{
-      const res = await fetch(f.webAppUrl, {
+      const res = await fetch(urlSistema, {
         method:"POST",
         body: new URLSearchParams({ id: rec.id, _sheetName: rec.sheetNameUsada || f.sheetName || "", _action:"actualizar_fila", _fila: rec.filaSheet, ...nuevaData })
       });
@@ -2254,16 +2223,17 @@ function openBuilder(formId){
     }
   });
   document.getElementById("bf_name").value = f.name || "";
-  document.getElementById("bf_url").value = f.webAppUrl || "";
   document.getElementById("bf_sheet").value = f.sheetName || "";
   renderBuilder();
   document.getElementById("builderModal").classList.add("show");
 }
 function closeBuilder(){ document.getElementById("builderModal").classList.remove("show"); }
 
-document.getElementById("btnTestUrl").addEventListener("click", async ()=>{
-  const url = document.getElementById("bf_url").value.trim();
-  if(!url){ showToast("Primero pega una URL"); return; }
+// Prueba cualquier URL de Apps Script y muestra un diagnóstico claro.
+// Se usa desde "Configuración del sistema" en el home — es la ÚNICA
+// prueba de conexión que existe ahora en toda la app.
+async function probarConexionUrl(url){
+  if(!url){ showToast("Primero escribe una URL"); return; }
   showToast("Probando conexión…");
   try{
     const res = await fetch(url, { method:"GET" });
@@ -2279,12 +2249,12 @@ document.getElementById("btnTestUrl").addEventListener("click", async ()=>{
         "✅ Diagnóstico de conexión"
       );
     } else {
-      showToast("⚠️ Respondió, pero no es el JSON esperado del Codigo.gs. Revisa el deploy.");
+      showToast("⚠️ Respondió, pero no es el JSON esperado del Codigo.gs (¿la URL es realmente la del /exec de TU proyecto?). Ábrela directo en el navegador para comparar.");
     }
   }catch(err){
     showToast("❌ No se pudo conectar. Revisa que la URL termine en /exec y que el acceso sea 'Cualquier usuario'");
   }
-});
+}
 
 function renderBuilder(){
   const list = document.getElementById("builderList");
@@ -2413,7 +2383,6 @@ document.getElementById("btnSaveBuilder").addEventListener("click", async ()=>{
 
   const f = FORMS.find(x=>x.id===builderFormId);
   f.name = document.getElementById("bf_name").value.trim() || "Formulario sin nombre";
-  f.webAppUrl = document.getElementById("bf_url").value.trim();
   f.sheetName = document.getElementById("bf_sheet").value.trim();
   f.questions = builderDraft;
   await persistForms();
